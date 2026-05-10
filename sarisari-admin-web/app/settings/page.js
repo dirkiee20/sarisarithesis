@@ -33,7 +33,12 @@ export default function SettingsPage() {
             <div className="card-title">API Configuration</div>
           </div>
           {[
-            { label: 'API Endpoint', value: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000' },
+            {
+              label: 'API Endpoint',
+              value:
+                process.env.NEXT_PUBLIC_API_URL ||
+                'https://sarisarithesis-production.up.railway.app',
+            },
             { label: 'Environment', value: process.env.NODE_ENV || 'development' },
           ].map(item => (
             <div key={item.label} className="info-row">

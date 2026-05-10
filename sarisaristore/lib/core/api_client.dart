@@ -2,11 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
-  // For USB-debugging on a physical Android device, use adb reverse to map
-  // the device's localhost:3000 back to the development machine.
+  // Override API_BASE_URL with --dart-define for local/dev builds when needed.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:3000/api',
+    defaultValue: 'https://sarisarithesis-production.up.railway.app/api',
   );
 
   late final Dio dio;
