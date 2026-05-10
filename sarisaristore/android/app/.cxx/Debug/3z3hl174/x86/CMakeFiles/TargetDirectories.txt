@@ -1,2 +1,0 @@
-D:/thesis/sarisaristore/android/app/.cxx/Debug/3z3hl174/x86/CMakeFiles/edit_cache.dir
-D:/thesis/sarisaristore/android/app/.cxx/Debug/3z3hl174/x86/CMakeFiles/rebuild_cache.dir
