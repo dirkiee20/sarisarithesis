@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../../core/owner_data_service.dart';
 import '../../theme/owner_theme.dart';
 import '../../widgets/owner_assistant_bubble.dart';
 import '../../widgets/owner_bottom_bar.dart';
@@ -13,47 +14,140 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
+  final _dataService = const OwnerDataService();
   String _period = 'Week';
   final _periods = ['Today', 'Week', 'Month', 'Year'];
+  OwnerAnalyticsData? _data;
+  bool _loading = true;
+  String? _error;
 
-  // Stub chart data
-  final _revenueData = [
-    FlSpot(0, 2200),
-    FlSpot(1, 3100),
-    FlSpot(2, 2800),
-    FlSpot(3, 3600),
-    FlSpot(4, 3200),
-    FlSpot(5, 4800),
-    FlSpot(6, 4250),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadAnalytics();
+  }
 
-  final _profitData = [
-    FlSpot(0, 820),
-    FlSpot(1, 1200),
-    FlSpot(2, 950),
-    FlSpot(3, 1400),
-    FlSpot(4, 1100),
-    FlSpot(5, 2100),
-    FlSpot(6, 1820),
-  ];
+  Future<void> _loadAnalytics() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
-  final _topProducts = [
-    {'name': 'Lucky Me Spicy', 'value': 640.0},
-    {'name': 'C2 Green Tea', 'value': 480.0},
-    {'name': 'Chippy BBQ', 'value': 360.0},
-    {'name': 'Bear Brand', 'value': 320.0},
-    {'name': 'Milo Sachet', 'value': 280.0},
-  ];
+    try {
+      final data = await _dataService.loadAnalytics(_period);
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to load analytics.';
+        _loading = false;
+      });
+    }
+  }
 
-  final _expenseCategories = [
-    {'name': 'Restocking', 'pct': 0.52, 'color': OwnerTheme.primary},
-    {'name': 'Utilities', 'pct': 0.22, 'color': Color(0xFFF59E0B)},
-    {'name': 'Packaging', 'pct': 0.14, 'color': Color(0xFF10B981)},
-    {'name': 'Others', 'pct': 0.12, 'color': Color(0xFF94A3B8)},
-  ];
+  List<FlSpot> get _revenueData => _spots('revenue');
+  List<FlSpot> get _profitData => _spots('profit');
+
+  List<FlSpot> _spots(String key) {
+    final trend = _data?.trend ?? const [];
+    if (trend.isEmpty) return const [FlSpot(0, 0)];
+    return trend.asMap().entries.map((entry) {
+      final value = entry.value[key];
+      final number = value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0;
+      return FlSpot(entry.key.toDouble(), number);
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get _topProducts => _data?.topProducts ?? const [];
+
+  double get _topProductMax {
+    final values = _topProducts
+        .map((item) => (item['value'] as num?)?.toDouble() ?? 0)
+        .toList();
+    if (values.isEmpty) return 1;
+    return values
+        .reduce((a, b) => a > b ? a : b)
+        .clamp(1, double.infinity)
+        .toDouble();
+  }
+
+  List<Map<String, dynamic>> get _expenseCategories {
+    final colors = [
+      OwnerTheme.primary,
+      const Color(0xFFF59E0B),
+      const Color(0xFF10B981),
+      const Color(0xFF94A3B8),
+    ];
+    final categories = _data?.expenseCategories ?? const [];
+    final total = categories.fold<double>(
+      0,
+      (sum, item) => sum + ((item['value'] as num?)?.toDouble() ?? 0),
+    );
+
+    return categories.asMap().entries.map((entry) {
+      final value = (entry.value['value'] as num?)?.toDouble() ?? 0;
+      return {
+        'name': entry.value['name'],
+        'pct': total <= 0 ? 0.0 : value / total,
+        'color': colors[entry.key % colors.length],
+      };
+    }).toList();
+  }
+
+  String _money(num value) {
+    final text = value.round().toString();
+    final chars = text.split('').reversed.toList();
+    final groups = <String>[];
+    for (var i = 0; i < chars.length; i += 3) {
+      groups.add(chars.skip(i).take(3).toList().reversed.join());
+    }
+    return '₱${groups.reversed.join(',')}';
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: OwnerTheme.background,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: OwnerTheme.background,
+        appBar: AppBar(
+          title: const Text('Analytics'),
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(6.w),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_error!,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(color: OwnerTheme.textSecondary)),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: _loadAnalytics,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: OwnerTheme.background,
       appBar: AppBar(
@@ -79,7 +173,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 children: _periods.map((p) {
                   final sel = p == _period;
                   return GestureDetector(
-                    onTap: () => setState(() => _period = p),
+                    onTap: () {
+                      setState(() => _period = p);
+                      _loadAnalytics();
+                    },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       margin: const EdgeInsets.only(right: 8),
@@ -112,17 +209,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               children: [
                 _StatCard(
                     label: 'Revenue',
-                    value: '₱23,580',
-                    change: '+18%',
+                    value: _money(_data?.revenue ?? 0),
+                    change: 'Live',
                     up: true),
                 SizedBox(width: 3.w),
                 _StatCard(
-                    label: 'Profit', value: '₱9,440', change: '+12%', up: true),
+                    label: 'Profit',
+                    value: _money(_data?.profit ?? 0),
+                    change: 'Live',
+                    up: true),
                 SizedBox(width: 3.w),
                 _StatCard(
                     label: 'Expenses',
-                    value: '₱3,820',
-                    change: '+4%',
+                    value: _money(_data?.expenses ?? 0),
+                    change: 'Live',
                     up: false),
               ],
             ),
@@ -201,44 +301,52 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               title: 'Top Products',
               subtitle: 'By revenue',
               child: Column(
-                children: _topProducts.asMap().entries.map((e) {
-                  final pct = (e.value['value'] as double) / 700;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 24.w,
-                          child: Text(e.value['name'] as String,
-                              style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: OwnerTheme.textSecondary),
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(99),
-                            child: LinearProgressIndicator(
-                              value: pct,
-                              minHeight: 8,
-                              backgroundColor: OwnerTheme.surfaceVariant,
-                              valueColor:
-                                  AlwaysStoppedAnimation(OwnerTheme.primary),
-                            ),
+                                children: _topProducts.isEmpty
+                    ? [
+                        _InlineEmpty(
+                            message:
+                                'No product sales summaries have been synced.')
+                      ]
+                    : _topProducts.asMap().entries.map((e) {
+                        final value =
+                            (e.value['value'] as num?)?.toDouble() ?? 0;
+                        final pct = value / _topProductMax;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 24.w,
+                                child: Text(e.value['name'] as String,
+                                    style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        color: OwnerTheme.textSecondary),
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(99),
+                                  child: LinearProgressIndicator(
+                                    value: pct,
+                                    minHeight: 8,
+                                    backgroundColor:
+                                        OwnerTheme.surfaceVariant,
+                                    valueColor: AlwaysStoppedAnimation(
+                                        OwnerTheme.primary),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(_money(value),
+                                  style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: OwnerTheme.textPrimary)),
+                            ],
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                            '₱${(e.value['value'] as double).toStringAsFixed(0)}',
-                            style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: OwnerTheme.textPrimary)),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                        );
+                      }).toList(),
               ),
             ),
 
@@ -249,7 +357,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               title: 'Expense Breakdown',
               subtitle: 'By category',
               child: Column(
-                children: _expenseCategories
+                children: _expenseCategories.isEmpty
+                    ? [
+                        _InlineEmpty(
+                            message:
+                                'No expense summaries have been synced yet.')
+                      ]
+                    : _expenseCategories
                     .map((cat) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Row(
@@ -386,3 +500,21 @@ class _ChartCard extends StatelessWidget {
     );
   }
 }
+
+class _InlineEmpty extends StatelessWidget {
+  final String message;
+  const _InlineEmpty({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Text(
+        message,
+        style: GoogleFonts.inter(fontSize: 12, color: OwnerTheme.textMuted),
+      ),
+    );
+  }
+}
+
+

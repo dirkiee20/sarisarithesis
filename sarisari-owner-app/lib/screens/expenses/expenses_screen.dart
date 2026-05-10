@@ -1,52 +1,61 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/owner_data_service.dart';
 import '../../theme/owner_theme.dart';
 import '../../widgets/owner_assistant_bubble.dart';
 import '../../widgets/owner_bottom_bar.dart';
 
-class ExpensesScreen extends StatelessWidget {
+class ExpensesScreen extends StatefulWidget {
   const ExpensesScreen({super.key});
 
-  static const _expenses = [
-    {
-      'desc': 'Jollibee Supply Co — Restocking',
-      'cat': 'Restocking',
-      'amount': '₱3,200',
-      'date': 'Mar 11'
-    },
-    {
-      'desc': 'Meralco Bill',
-      'cat': 'Utilities',
-      'amount': '₱1,400',
-      'date': 'Mar 10'
-    },
-    {
-      'desc': 'Plastic Bags & Containers',
-      'cat': 'Packaging',
-      'amount': '₱480',
-      'date': 'Mar 10'
-    },
-    {
-      'desc': 'Drinks Restock',
-      'cat': 'Restocking',
-      'amount': '₱1,800',
-      'date': 'Mar 9'
-    },
-    {
-      'desc': 'PLDT Internet',
-      'cat': 'Utilities',
-      'amount': '₱700',
-      'date': 'Mar 8'
-    },
-    {
-      'desc': 'Cigarette Restock',
-      'cat': 'Restocking',
-      'amount': '₱560',
-      'date': 'Mar 7'
-    },
-  ];
+  @override
+  State<ExpensesScreen> createState() => _ExpensesScreenState();
+}
 
+class _ExpensesScreenState extends State<ExpensesScreen> {
+  final _dataService = const OwnerDataService();
+  OwnerExpensesData? _data;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExpenses();
+  }
+
+  Future<void> _loadExpenses() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final data = await _dataService.loadExpenses();
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to load expense summaries.';
+        _loading = false;
+      });
+    }
+  }
+
+  String _money(num value) {
+    final text = value.round().toString();
+    final chars = text.split('').reversed.toList();
+    final groups = <String>[];
+    for (var i = 0; i < chars.length; i += 3) {
+      groups.add(chars.skip(i).take(3).toList().reversed.join());
+    }
+    return '\u20B1${groups.reversed.join(',')}';
+  }
   Color _catColor(String c) {
     switch (c) {
       case 'Restocking':
@@ -86,7 +95,11 @@ class ExpensesScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: ListView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? _ExpenseMessage(message: _error!, onRetry: _loadExpenses)
+              : ListView(
         padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
         children: [
           // Summary
@@ -101,17 +114,21 @@ class ExpensesScreen extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _ExpStat(label: 'This Month', value: '₱8,140'),
+                _ExpStat(
+                    label: 'This Month',
+                    value: _money(_data?.monthTotal ?? 0)),
                 Container(
                     width: 1,
                     height: 36,
                     color: Colors.white.withValues(alpha: 0.2)),
-                _ExpStat(label: 'This Week', value: '₱3,820'),
+                _ExpStat(
+                    label: 'This Week',
+                    value: _money(_data?.weekTotal ?? 0)),
                 Container(
                     width: 1,
                     height: 36,
                     color: Colors.white.withValues(alpha: 0.2)),
-                _ExpStat(label: 'Today', value: '₱640'),
+                _ExpStat(label: 'Today', value: _money(_data?.todayTotal ?? 0)),
               ],
             ),
           ),
@@ -124,8 +141,14 @@ class ExpensesScreen extends StatelessWidget {
                   color: OwnerTheme.textPrimary)),
           SizedBox(height: 1.h),
 
-          ..._expenses.map((e) {
-            final catColor = _catColor(e['cat']!);
+          if ((_data?.expenses ?? const []).isEmpty)
+            const _ExpenseEmptyCard(
+              message: 'No expense summaries have been synced yet.',
+            )
+          else
+            ...(_data?.expenses ?? const []).map((e) {
+            final cat = e['cat'] ?? 'General';
+            final catColor = _catColor(cat);
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(14),
@@ -151,7 +174,7 @@ class ExpensesScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(e['desc']!,
+                        Text(e['desc'] ?? '$cat summary',
                             style: GoogleFonts.inter(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -164,7 +187,7 @@ class ExpensesScreen extends StatelessWidget {
                             color: catColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(99),
                           ),
-                          child: Text(e['cat']!,
+                          child: Text(cat,
                               style: GoogleFonts.inter(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
@@ -176,12 +199,12 @@ class ExpensesScreen extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(e['amount']!,
+                      Text(e['amount'] ?? _money(0),
                           style: GoogleFonts.inter(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
                               color: OwnerTheme.textPrimary)),
-                      Text(e['date']!,
+                      Text(e['date'] ?? '',
                           style: GoogleFonts.inter(
                               fontSize: 11, color: OwnerTheme.textMuted)),
                     ],
@@ -196,6 +219,62 @@ class ExpensesScreen extends StatelessWidget {
       floatingActionButton: const OwnerAssistantBubble(),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: const OwnerBottomBar(currentIndex: 3),
+    );
+  }
+}
+
+class _ExpenseMessage extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+
+  const _ExpenseMessage({
+    required this.message,
+    this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(6.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style:
+                  GoogleFonts.inter(fontSize: 13, color: OwnerTheme.textMuted),
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpenseEmptyCard extends StatelessWidget {
+  final String message;
+  const _ExpenseEmptyCard({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: OwnerTheme.border),
+      ),
+      child: Text(
+        message,
+        style: GoogleFonts.inter(fontSize: 12, color: OwnerTheme.textMuted),
+      ),
     );
   }
 }
@@ -215,3 +294,4 @@ class _ExpStat extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.6), fontSize: 11)),
       ]);
 }
+

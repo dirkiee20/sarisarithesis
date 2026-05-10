@@ -212,7 +212,7 @@ class OwnerAssistant {
         return AssistantReply(
           intent: intent,
           message: '${snapshot.storeName} is ${snapshot.healthLabel}. '
-              'Revenue is up 12% today at ${_money(snapshot.todayRevenue)}, '
+              'Today revenue is ${_money(snapshot.todayRevenue)}, '
               'profit is ${_money(snapshot.todayProfit)}, and expenses are '
               '${_money(snapshot.todayExpenses)}. ${_inventoryWatch(snapshot)}',
         );
@@ -220,8 +220,8 @@ class OwnerAssistant {
         return AssistantReply(
           intent: intent,
           message: 'Today sales are ${_money(snapshot.todayRevenue)} from '
-              '${snapshot.todayTransactions} transactions. This is 12% higher '
-              'than the previous period in the sample dashboard.',
+              '${snapshot.todayTransactions} transactions based on the latest '
+              'cashier summaries synced to the backend.',
         );
       case AssistantIntent.profit:
         return AssistantReply(
@@ -368,6 +368,9 @@ class OwnerAssistant {
   String _restockAdvice(BusinessSnapshot snapshot) {
     final restock = snapshot.restockProducts;
     if (restock.isEmpty) {
+      if (snapshot.topProducts.isEmpty) {
+        return 'No urgent restock needed from the latest synced summaries. Sync cashier product summaries to unlock best-seller guidance.';
+      }
       return 'No urgent restock needed. Keep monitoring fast-moving products like ${snapshot.topProducts.first.name}.';
     }
 
@@ -382,6 +385,10 @@ class OwnerAssistant {
   }
 
   String _topProducts(BusinessSnapshot snapshot) {
+    if (snapshot.topProducts.isEmpty) {
+      return 'No top product summaries have been synced yet. Ask again after the cashier app uploads sales summaries.';
+    }
+
     final products = snapshot.topProducts.take(3).map((product) {
       return '${product.name} (${product.quantitySold} sold, ${_money(product.revenue)})';
     }).join('; ');

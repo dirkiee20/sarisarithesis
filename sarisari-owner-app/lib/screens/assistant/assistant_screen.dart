@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
+import '../../core/owner_data_service.dart';
 import '../../core/owner_assistant.dart';
 import '../../theme/owner_theme.dart';
 
@@ -15,6 +15,7 @@ class AssistantScreen extends StatefulWidget {
 
 class _AssistantScreenState extends State<AssistantScreen> {
   final _assistant = const OwnerAssistant();
+  final _dataService = const OwnerDataService();
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
 
@@ -68,24 +69,49 @@ class _AssistantScreenState extends State<AssistantScreen> {
   }
 
   Future<void> _loadSnapshot() async {
-    final prefs = await SharedPreferences.getInstance();
-    final snapshot = BusinessSnapshot.sample(
-      ownerName: prefs.getString('owner_name') ?? 'Owner',
-      storeName: prefs.getString('owner_store') ?? 'My Store',
-    );
-    final intro = _assistant.buildIntro(snapshot);
+    try {
+      final snapshot = await _dataService.loadAssistantSnapshot();
+      final intro = _assistant.buildIntro(snapshot);
 
-    if (!mounted) return;
-    setState(() {
-      _snapshot = snapshot;
-      _messages = [
-        _ChatMessage(
-          text: intro.message,
-          isAssistant: true,
-          sentAt: DateTime.now(),
-        ),
-      ];
-    });
+      if (!mounted) return;
+      setState(() {
+        _snapshot = snapshot;
+        _messages = [
+          _ChatMessage(
+            text: intro.message,
+            isAssistant: true,
+            sentAt: DateTime.now(),
+          ),
+        ];
+      });
+    } catch (_) {
+      if (!mounted) return;
+      const snapshot = BusinessSnapshot(
+        ownerName: 'Owner',
+        storeName: 'My Store',
+        todayRevenue: 0,
+        todayProfit: 0,
+        todayExpenses: 0,
+        todayTransactions: 0,
+        weeklyRevenue: 0,
+        weeklyProfit: 0,
+        weeklyExpenses: 0,
+        pendingOrders: 0,
+        products: [],
+        topProducts: [],
+      );
+      setState(() {
+        _snapshot = snapshot;
+        _messages = [
+          _ChatMessage(
+            text:
+                'I could not load the latest store data yet. Please check your connection and try again.',
+            isAssistant: true,
+            sentAt: DateTime.now(),
+          ),
+        ];
+      });
+    }
   }
 
   void _send([String? prompt]) {

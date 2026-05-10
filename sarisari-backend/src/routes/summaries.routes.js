@@ -305,6 +305,83 @@ router.get(
 );
 
 router.get(
+  '/expenses',
+  requireRole('owner', 'manager'),
+  asyncHandler(async (req, res) => {
+    const { startDate, endDate } = getDateRange(req.query);
+    const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+
+    const [totalsResult, expensesResult] = await Promise.all([
+      pool.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN summary_date = CURRENT_DATE THEN expense_total ELSE 0 END), 0)::float AS today_total,
+           COALESCE(SUM(CASE
+             WHEN summary_date >= (CURRENT_DATE - ((EXTRACT(ISODOW FROM CURRENT_DATE)::int - 1) * INTERVAL '1 day'))::date
+             THEN expense_total ELSE 0
+           END), 0)::float AS week_total,
+           COALESCE(SUM(CASE
+             WHEN summary_date >= DATE_TRUNC('month', CURRENT_DATE)::date
+             THEN expense_total ELSE 0
+           END), 0)::float AS month_total
+         FROM cashier_daily_summaries
+         WHERE tenant_id = $1`,
+        [req.tenantId]
+      ),
+      pool.query(
+        `WITH expense_rows AS (
+           SELECT
+             summaries.summary_date,
+             entry.key AS category,
+             COALESCE(NULLIF(entry.value, '')::numeric, 0) AS amount,
+             1::int AS expense_count,
+             summaries.received_at
+           FROM cashier_daily_summaries summaries
+           CROSS JOIN LATERAL jsonb_each_text(summaries.expense_breakdown) entry
+           WHERE summaries.tenant_id = $1
+             AND summaries.summary_date BETWEEN $2 AND $3
+             AND COALESCE(NULLIF(entry.value, '')::numeric, 0) > 0
+
+           UNION ALL
+
+           SELECT
+             summary_date,
+             'General' AS category,
+             expense_total::numeric AS amount,
+             GREATEST(expense_count, 1)::int AS expense_count,
+             received_at
+           FROM cashier_daily_summaries
+           WHERE tenant_id = $1
+             AND summary_date BETWEEN $2 AND $3
+             AND expense_total > 0
+             AND expense_breakdown = '{}'::jsonb
+         )
+         SELECT
+           summary_date AS date,
+           category,
+           COALESCE(SUM(amount), 0)::float AS amount,
+           COALESCE(SUM(expense_count), 0)::int AS count,
+           MAX(received_at) AS latest_summary_at
+         FROM expense_rows
+         GROUP BY summary_date, category
+         ORDER BY summary_date DESC, amount DESC, category ASC
+         LIMIT $4`,
+        [req.tenantId, startDate, endDate, limit]
+      ),
+    ]);
+
+    res.json({
+      period: { startDate, endDate },
+      totals: totalsResult.rows[0],
+      expenses: expensesResult.rows,
+      privacy: {
+        source: 'cashier_daily_summary_expense_breakdown',
+        excludedFields: ['receipt', 'vendor', 'rawExpenseRecord'],
+      },
+    });
+  })
+);
+
+router.get(
   '/products',
   requireRole('owner', 'manager'),
   asyncHandler(async (req, res) => {

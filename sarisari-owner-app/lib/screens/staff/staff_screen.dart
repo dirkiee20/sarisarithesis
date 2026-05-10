@@ -1,43 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/owner_data_service.dart';
 import '../../theme/owner_theme.dart';
 import '../../widgets/owner_assistant_bubble.dart';
 import '../../widgets/owner_bottom_bar.dart';
 
-class StaffScreen extends StatelessWidget {
+class StaffScreen extends StatefulWidget {
   const StaffScreen({super.key});
 
-  static const _staff = [
-    {
-      'name': 'Maria Santos',
-      'role': 'Cashier',
-      'status': 'Active',
-      'shift': 'Morning (6AM–2PM)',
-      'sales': '₱12,400'
-    },
-    {
-      'name': 'Jose Reyes',
-      'role': 'Stock Manager',
-      'status': 'Active',
-      'shift': 'Morning (6AM–2PM)',
-      'sales': '₱8,200'
-    },
-    {
-      'name': 'Ana Cruz',
-      'role': 'Cashier',
-      'status': 'Active',
-      'shift': 'Afternoon (2PM–10PM)',
-      'sales': '₱9,800'
-    },
-    {
-      'name': 'Pedro Garcia',
-      'role': 'Cashier',
-      'status': 'Day Off',
-      'shift': 'Afternoon (2PM–10PM)',
-      'sales': '₱7,100'
-    },
-  ];
+  @override
+  State<StaffScreen> createState() => _StaffScreenState();
+}
+
+class _StaffScreenState extends State<StaffScreen> {
+  final _dataService = const OwnerDataService();
+  OwnerStaffData? _data;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStaff();
+  }
+
+  Future<void> _loadStaff() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final data = await _dataService.loadStaff();
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to load staff data.';
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +73,11 @@ class StaffScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: ListView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? _StaffMessage(message: _error!, onRetry: _loadStaff)
+              : ListView(
         padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
         children: [
           // Summary row
@@ -73,19 +85,19 @@ class StaffScreen extends StatelessWidget {
             children: [
               _StatTile(
                   label: 'Total Staff',
-                  value: '4',
+                  value: '${_data?.totalStaff ?? 0}',
                   icon: Icons.people_rounded,
                   color: OwnerTheme.primary),
               SizedBox(width: 3.w),
               _StatTile(
-                  label: 'On Duty',
-                  value: '3',
+                  label: 'Active',
+                  value: '${_data?.activeStaff ?? 0}',
                   icon: Icons.check_circle_rounded,
                   color: OwnerTheme.accent),
               SizedBox(width: 3.w),
               _StatTile(
-                  label: 'Day Off',
-                  value: '1',
+                  label: 'Inactive',
+                  value: '${_data?.inactiveStaff ?? 0}',
                   icon: Icons.free_breakfast_rounded,
                   color: OwnerTheme.warning),
             ],
@@ -99,13 +111,74 @@ class StaffScreen extends StatelessWidget {
                   color: OwnerTheme.textPrimary)),
           SizedBox(height: 1.h),
 
-          ..._staff.map((s) => _StaffCard(staff: s)),
+          if ((_data?.staff ?? const []).isEmpty)
+            const _StaffEmptyCard(
+              message: 'No staff accounts found for this store.',
+            )
+          else
+            ...(_data?.staff ?? const []).map((s) => _StaffCard(staff: s)),
           SizedBox(height: 10.h),
         ],
       ),
       floatingActionButton: const OwnerAssistantBubble(),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: const OwnerBottomBar(currentIndex: 3),
+    );
+  }
+}
+
+class _StaffMessage extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+
+  const _StaffMessage({
+    required this.message,
+    this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(6.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style:
+                  GoogleFonts.inter(fontSize: 13, color: OwnerTheme.textMuted),
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StaffEmptyCard extends StatelessWidget {
+  final String message;
+  const _StaffEmptyCard({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: OwnerTheme.border),
+      ),
+      child: Text(
+        message,
+        style: GoogleFonts.inter(fontSize: 12, color: OwnerTheme.textMuted),
+      ),
     );
   }
 }
@@ -245,3 +318,4 @@ class _StaffCard extends StatelessWidget {
     );
   }
 }
+

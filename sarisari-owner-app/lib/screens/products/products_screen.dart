@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/owner_data_service.dart';
 import '../../theme/owner_theme.dart';
 import '../../widgets/owner_assistant_bubble.dart';
 import '../../widgets/owner_bottom_bar.dart';
@@ -16,66 +17,38 @@ class _ProductsScreenState extends State<ProductsScreen> {
   String _search = '';
   String _filter = 'All';
   final _filters = ['All', 'In Stock', 'Low Stock', 'Out of Stock'];
+  final _dataService = const OwnerDataService();
+  List<Map<String, dynamic>> _products = const [];
+  bool _loading = true;
+  String? _error;
 
-  // Stub product data
-  final _products = [
-    {
-      'name': 'Lucky Me Spicy',
-      'category': 'Noodles',
-      'price': '₱13.00',
-      'stock': 84,
-      'status': 'In Stock'
-    },
-    {
-      'name': 'C2 Green Tea',
-      'category': 'Beverages',
-      'price': '₱20.00',
-      'stock': 48,
-      'status': 'In Stock'
-    },
-    {
-      'name': 'Chippy BBQ',
-      'category': 'Snacks',
-      'price': '₱20.00',
-      'stock': 9,
-      'status': 'Low Stock'
-    },
-    {
-      'name': 'Bear Brand Milk',
-      'category': 'Dairy',
-      'price': '₱20.00',
-      'stock': 32,
-      'status': 'In Stock'
-    },
-    {
-      'name': 'Skyflakes Crackers',
-      'category': 'Snacks',
-      'price': '₱8.00',
-      'stock': 0,
-      'status': 'Out of Stock'
-    },
-    {
-      'name': 'Milo 3-in-1',
-      'category': 'Beverages',
-      'price': '₱12.00',
-      'stock': 75,
-      'status': 'In Stock'
-    },
-    {
-      'name': 'Marlboro Red',
-      'category': 'Tobacco',
-      'price': '₱7.00',
-      'stock': 6,
-      'status': 'Low Stock'
-    },
-    {
-      'name': 'Piattos Original',
-      'category': 'Snacks',
-      'price': '₱25.00',
-      'stock': 20,
-      'status': 'In Stock'
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final products = await _dataService.loadProducts();
+      if (!mounted) return;
+      setState(() {
+        _products = products;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to load product summaries.';
+        _loading = false;
+      });
+    }
+  }
 
   Color _statusColor(String s) {
     switch (s) {
@@ -167,7 +140,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
           // Product list
           Expanded(
-            child: ListView.builder(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? _MessageState(message: _error!, onRetry: _loadProducts)
+                    : _filtered.isEmpty
+                        ? const _MessageState(
+                            message:
+                                'No product summaries found. Sync from the cashier app first.',
+                          )
+                        : ListView.builder(
               padding: EdgeInsets.fromLTRB(4.w, 1.5.h, 4.w, 12.h),
               itemCount: _filtered.length,
               itemBuilder: (_, i) {
@@ -258,3 +240,38 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 }
+
+class _MessageState extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+
+  const _MessageState({
+    required this.message,
+    this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(6.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style:
+                  GoogleFonts.inter(fontSize: 13, color: OwnerTheme.textMuted),
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+

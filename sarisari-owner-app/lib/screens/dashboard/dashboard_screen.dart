@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/owner_data_service.dart';
 import '../../routes/app_routes.dart';
 import '../../theme/owner_theme.dart';
 import '../../widgets/owner_assistant_bubble.dart';
@@ -15,63 +15,121 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  String _storeName = '';
-  String _ownerName = '';
-  String _tier = 'pro';
-
-  // Stub KPI data — replace with API when wired
-  final _kpis = [
-    {
-      'label': 'Today\'s Revenue',
-      'value': '₱4,250',
-      'change': '+12%',
-      'up': true,
-      'icon': Icons.payments_outlined,
-      'color': const Color(0xFF4F46E5)
-    },
-    {
-      'label': 'Total Profit',
-      'value': '₱1,820',
-      'change': '+8%',
-      'up': true,
-      'icon': Icons.trending_up_rounded,
-      'color': const Color(0xFF10B981)
-    },
-    {
-      'label': 'Expenses',
-      'value': '₱640',
-      'change': '-3%',
-      'up': false,
-      'icon': Icons.receipt_long_outlined,
-      'color': const Color(0xFFF59E0B)
-    },
-    {
-      'label': 'Transactions',
-      'value': '38',
-      'change': '+5',
-      'up': true,
-      'icon': Icons.shopping_bag_outlined,
-      'color': const Color(0xFF0EA5E9)
-    },
-  ];
-
+  final _dataService = const OwnerDataService();
+  OwnerDashboardData? _data;
+  bool _loading = true;
+  String? _error;
   @override
   void initState() {
     super.initState();
-    _loadUser();
+    _loadDashboard();
   }
 
-  Future<void> _loadUser() async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _loadDashboard() async {
     setState(() {
-      _storeName = prefs.getString('owner_store') ?? 'My Store';
-      _ownerName = prefs.getString('owner_name') ?? 'Owner';
-      _tier = prefs.getString('owner_tier') ?? 'free';
+      _loading = true;
+      _error = null;
     });
+
+    try {
+      final data = await _dataService.loadDashboard();
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to load dashboard data.';
+        _loading = false;
+      });
+    }
+  }
+
+  String get _storeName => _data?.storeName ?? 'My Store';
+  String get _ownerName => _data?.ownerName ?? 'Owner';
+  String get _tier => _data?.tier ?? 'free';
+
+  List<Map<String, dynamic>> get _kpis {
+    final source = _data?.kpis ?? const [];
+    final icons = [
+      Icons.payments_outlined,
+      Icons.trending_up_rounded,
+      Icons.receipt_long_outlined,
+      Icons.shopping_bag_outlined,
+    ];
+    final colors = [
+      const Color(0xFF4F46E5),
+      const Color(0xFF10B981),
+      const Color(0xFFF59E0B),
+      const Color(0xFF0EA5E9),
+    ];
+
+    return List.generate(source.length, (index) {
+      return {
+        ...source[index],
+        'icon': icons[index],
+        'color': colors[index],
+      };
+    });
+  }
+
+  List<FlSpot> get _weeklyRevenueSpots {
+    final daily = _data?.weeklyTrend ?? const [];
+    if (daily.isEmpty) return const [FlSpot(0, 0)];
+    return daily.asMap().entries.map((entry) {
+      final revenue = entry.value['revenue'];
+      final value = revenue is num
+          ? revenue.toDouble()
+          : double.tryParse(revenue?.toString() ?? '') ?? 0;
+      return FlSpot(entry.key.toDouble(), value);
+    }).toList();
+  }
+
+  String _money(num value) {
+    final text = value.round().toString();
+    final chars = text.split('').reversed.toList();
+    final groups = <String>[];
+    for (var i = 0; i < chars.length; i += 3) {
+      groups.add(chars.skip(i).take(3).toList().reversed.join());
+    }
+    return '₱${groups.reversed.join(',')}';
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: OwnerTheme.background,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: OwnerTheme.background,
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(6.w),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_error!,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(color: OwnerTheme.textSecondary)),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: _loadDashboard,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: OwnerTheme.background,
       body: CustomScrollView(
@@ -140,11 +198,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _MiniStat(label: 'Revenue', value: '₱4,250'),
+                        _MiniStat(
+                            label: 'Revenue',
+                            value: _money(_data?.todayRevenue ?? 0)),
                         _Divider(),
-                        _MiniStat(label: 'Profit', value: '₱1,820'),
+                        _MiniStat(
+                            label: 'Profit',
+                            value: _money(_data?.todayProfit ?? 0)),
                         _Divider(),
-                        _MiniStat(label: 'Orders', value: '38'),
+                        _MiniStat(
+                            label: 'Orders',
+                            value: '${_data?.todayTransactions ?? 0}'),
                       ],
                     ),
                   ),
@@ -243,15 +307,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         borderData: FlBorderData(show: false),
                         lineBarsData: [
                           LineChartBarData(
-                            spots: const [
-                              FlSpot(0, 2200),
-                              FlSpot(1, 3100),
-                              FlSpot(2, 2800),
-                              FlSpot(3, 3600),
-                              FlSpot(4, 3200),
-                              FlSpot(5, 4800),
-                              FlSpot(6, 4250),
-                            ],
+                            spots: _weeklyRevenueSpots,
                             isCurved: true,
                             color: OwnerTheme.primary,
                             barWidth: 2.5,
@@ -321,20 +377,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   _SectionTitle('Top Products Today'),
                   SizedBox(height: 1.h),
-                  _TopProductItem(
-                      rank: 1,
-                      name: 'Lucky Me Spicy',
-                      revenue: '₱640',
-                      qty: 32),
-                  _TopProductItem(
-                      rank: 2, name: 'C2 Green Tea', revenue: '₱480', qty: 24),
-                  _TopProductItem(
-                      rank: 3, name: 'Chippy BBQ', revenue: '₱360', qty: 18),
-                  _TopProductItem(
-                      rank: 4,
-                      name: 'Bear Brand Milk',
-                      revenue: '₱320',
-                      qty: 16),
+                  if ((_data?.topProducts ?? const []).isEmpty)
+                    _EmptyCard(
+                      message:
+                          'No cashier product summaries have been synced yet.',
+                    )
+                  else
+                    ...(_data?.topProducts ?? const [])
+                        .asMap()
+                        .entries
+                        .map((entry) {
+                      final product = entry.value;
+                      return _TopProductItem(
+                        rank: entry.key + 1,
+                        name: product['name'] as String,
+                        revenue: product['revenue'] as String,
+                        qty: product['qty'] as int,
+                      );
+                    }),
                 ],
               ),
             ),
@@ -488,6 +548,28 @@ class _QuickAction extends StatelessWidget {
   }
 }
 
+class _EmptyCard extends StatelessWidget {
+  final String message;
+  const _EmptyCard({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: OwnerTheme.border),
+      ),
+      child: Text(
+        message,
+        style: GoogleFonts.inter(fontSize: 12, color: OwnerTheme.textMuted),
+      ),
+    );
+  }
+}
+
 class _TopProductItem extends StatelessWidget {
   final int rank;
   final String name, revenue;
@@ -549,3 +631,6 @@ class _TopProductItem extends StatelessWidget {
     );
   }
 }
+
+
+
