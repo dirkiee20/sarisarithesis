@@ -1,3 +1,23 @@
+function getEnvValue(names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+
+  return undefined;
+}
+
+function getConnectionString() {
+  return getEnvValue([
+    'DATABASE_URL',
+    'DATABASE_PRIVATE_URL',
+    'DATABASE_PUBLIC_URL',
+    'POSTGRES_URL',
+    'POSTGRES_PRIVATE_URL',
+    'POSTGRES_PUBLIC_URL',
+  ]);
+}
+
 function useSsl() {
   const value = String(
     process.env.DB_SSL || process.env.PGSSLMODE || ''
@@ -11,7 +31,7 @@ function useSsl() {
     return true;
   }
 
-  const databaseUrl = process.env.DATABASE_URL || '';
+  const databaseUrl = getConnectionString() || '';
   return /supabase\.(co|com)|pooler\.supabase\.(co|com)/i.test(databaseUrl);
 }
 
@@ -26,6 +46,22 @@ function getSslConfig() {
 }
 
 function getDatabaseConfig(options = {}) {
+  const connectionString = getConnectionString();
+  const host = getEnvValue(['DB_HOST', 'PGHOST']);
+  const database = options.database || getEnvValue(['DB_NAME', 'PGDATABASE']);
+  const user = getEnvValue(['DB_USER', 'PGUSER']);
+  const password = getEnvValue(['DB_PASSWORD', 'PGPASSWORD']);
+
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !connectionString &&
+    !host
+  ) {
+    throw new Error(
+      'Production database configuration is missing. Set DATABASE_URL for Supabase, or attach a Railway Postgres service and expose DATABASE_PRIVATE_URL/POSTGRES_URL/PGHOST variables.'
+    );
+  }
+
   const config = {
     max: parseInt(process.env.DB_POOL_MAX || '10', 10),
     idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT_MS || '30000', 10),
@@ -35,14 +71,14 @@ function getDatabaseConfig(options = {}) {
     ),
   };
 
-  if (process.env.DATABASE_URL) {
-    config.connectionString = process.env.DATABASE_URL;
+  if (connectionString) {
+    config.connectionString = connectionString;
   } else {
-    config.host = process.env.DB_HOST || 'localhost';
-    config.port = parseInt(process.env.DB_PORT || '5432', 10);
-    config.database = options.database || process.env.DB_NAME || 'sarisari_pro';
-    config.user = process.env.DB_USER || 'postgres';
-    config.password = process.env.DB_PASSWORD;
+    config.host = host || 'localhost';
+    config.port = parseInt(getEnvValue(['DB_PORT', 'PGPORT']) || '5432', 10);
+    config.database = database || 'sarisari_pro';
+    config.user = user || 'postgres';
+    config.password = password;
   }
 
   const ssl = getSslConfig();
@@ -55,16 +91,17 @@ function getDatabaseConfig(options = {}) {
 
 function getAdminDatabaseConfig() {
   return {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432', 10),
+    host: getEnvValue(['DB_HOST', 'PGHOST']) || 'localhost',
+    port: parseInt(getEnvValue(['DB_PORT', 'PGPORT']) || '5432', 10),
     database: process.env.DB_ADMIN_DATABASE || 'postgres',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD,
+    user: getEnvValue(['DB_USER', 'PGUSER']) || 'postgres',
+    password: getEnvValue(['DB_PASSWORD', 'PGPASSWORD']),
     ssl: getSslConfig(),
   };
 }
 
 module.exports = {
+  getConnectionString,
   getAdminDatabaseConfig,
   getDatabaseConfig,
 };
