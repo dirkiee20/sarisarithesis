@@ -1,0 +1,2 @@
+D:/thesis/sarisaristore/android/app/.cxx/Debug/3z3hl174/armeabi-v7a/CMakeFiles/edit_cache.dir
+D:/thesis/sarisaristore/android/app/.cxx/Debug/3z3hl174/armeabi-v7a/CMakeFiles/rebuild_cache.dir

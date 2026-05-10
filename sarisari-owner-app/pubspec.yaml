@@ -1,0 +1,42 @@
+name: sarisari_owner
+description: "SariSari Pro — Business Owner App"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & responsive
+  sizer: ^2.0.15
+  google_fonts: ^6.1.0
+  flutter_svg: ^2.0.9
+
+  # State & storage
+  shared_preferences: ^2.2.2
+  provider: ^6.1.2
+
+  # Charts
+  fl_chart: ^0.65.0
+
+  # Network
+  dio: ^5.4.0
+  connectivity_plus: ^6.1.4
+
+  # Utils
+  cached_network_image: ^3.3.1
+  intl: ^0.19.0
+  fluttertoast: ^8.2.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
