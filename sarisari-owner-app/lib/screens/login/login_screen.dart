@@ -274,6 +274,23 @@ class _LoginScreenState extends State<LoginScreen>
                                             fontWeight: FontWeight.w700)),
                               ),
                             ),
+                            SizedBox(height: 2.h),
+                            Center(
+                              child: TextButton(
+                                onPressed: _loading
+                                    ? null
+                                    : () => Navigator.of(context)
+                                        .pushNamed(AppRoutes.register),
+                                child: Text(
+                                  'Create an owner account',
+                                  style: GoogleFonts.inter(
+                                    color: OwnerTheme.primary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),

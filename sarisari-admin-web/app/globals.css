@@ -877,6 +877,87 @@ tbody tr:hover { background: var(--bg-elevated); }
 .info-row-label { color: var(--text-secondary); }
 .info-row-value { font-weight: 600; color: var(--text-primary); }
 
+/* SETTINGS */
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  gap: 20px;
+  align-items: start;
+  width: 100%;
+}
+
+.settings-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.settings-profile-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+}
+
+.settings-profile-meta {
+  min-width: 0;
+}
+
+.settings-code {
+  max-width: min(100%, 460px);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--accent-light);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.settings-tier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-tier-card {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+
+.settings-tier-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.settings-tier-name {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.settings-tier-price {
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.settings-tier-features {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* ANALYTICS */
 .analytics-chip-row {
   display: flex;
@@ -1083,6 +1164,7 @@ tbody tr:hover { background: var(--bg-elevated); }
 ══════════════════════════════════════════ */
 @media (max-width: 1100px) {
   .grid-main-side { grid-template-columns: 1fr; }
+  .settings-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 900px) {
@@ -1091,4 +1173,17 @@ tbody tr:hover { background: var(--bg-elevated); }
   .analytics-inline-stats { grid-template-columns: 1fr; }
   .analytics-progress-row { grid-template-columns: 1fr; }
   .ai-stat-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .settings-info-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .settings-code {
+    max-width: 100%;
+    text-align: left;
+  }
 }

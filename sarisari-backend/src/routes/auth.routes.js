@@ -44,6 +44,10 @@ router.post(
     body('password')
       .isLength({ min: 6 })
       .withMessage('Password must be at least 6 characters'),
+    body('subscriptionTier')
+      .optional()
+      .isIn(['free', 'pro', 'enterprise'])
+      .withMessage('Invalid subscription tier'),
   ],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);
@@ -51,7 +55,25 @@ router.post(
       return res.status(422).json({ errors: errors.array() });
     }
 
-    const { businessName, ownerName, email, password, phone, address } = req.body;
+    const {
+      businessName,
+      ownerName,
+      email,
+      password,
+      phone,
+      address,
+      subscriptionTier = 'free',
+    } = req.body;
+    const selectedTier = ['free', 'pro', 'enterprise'].includes(subscriptionTier)
+      ? subscriptionTier
+      : 'free';
+    const registrationSettings = {
+      registrationPayment: {
+        mode: selectedTier === 'free' ? 'free_plan' : 'simulation',
+        status: 'approved',
+        simulatedAt: new Date().toISOString(),
+      },
+    };
 
     // Check existing user
     const existing = await pool.query(
@@ -67,9 +89,26 @@ router.post(
 
       // Create tenant
       const tenantResult = await client.query(
-        `INSERT INTO tenants (business_name, owner_email, phone, address)
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-        [businessName, email, phone || null, address || null]
+        `INSERT INTO tenants (
+           business_name,
+           owner_email,
+           phone,
+           address,
+           subscription_tier,
+           subscription_status,
+           subscription_started_at,
+           settings
+         )
+         VALUES ($1, $2, $3, $4, $5, 'active', NOW(), $6::jsonb)
+         RETURNING *`,
+        [
+          businessName,
+          email,
+          phone || null,
+          address || null,
+          selectedTier,
+          JSON.stringify(registrationSettings),
+        ]
       );
       const tenant = tenantResult.rows[0];
 
@@ -113,6 +152,8 @@ router.post(
           id: tenant.id,
           businessName: tenant.business_name,
           subscriptionTier: tenant.subscription_tier,
+          subscriptionStatus: tenant.subscription_status,
+          paymentMode: registrationSettings.registrationPayment.mode,
         },
       });
     } catch (err) {
