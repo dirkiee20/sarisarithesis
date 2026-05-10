@@ -145,8 +145,8 @@ class OwnerDataService {
   Future<OwnerAnalyticsData> loadAnalytics(String period) async {
     final periodKey = period.toLowerCase();
     final results = await Future.wait<Response<dynamic>>([
-      apiClient.get('/analytics/overview',
-          queryParameters: {'period': periodKey}),
+      apiClient
+          .get('/analytics/overview', queryParameters: {'period': periodKey}),
       apiClient.get('/analytics/sales-trend',
           queryParameters: {'period': periodKey}),
       apiClient.get('/analytics/top-products',
@@ -196,13 +196,29 @@ class OwnerDataService {
   }
 
   Future<OwnerExpensesData> loadExpenses() async {
-    final response = await apiClient.get(
-      '/summaries/expenses',
-      queryParameters: {'period': 'month', 'limit': 50},
-    );
-    final payload = _asMap(response.data);
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final weekStart =
+        todayStart.subtract(Duration(days: todayStart.weekday - 1));
+    final monthStart = DateTime(now.year, now.month);
+
+    final results = await Future.wait<Response<dynamic>>([
+      apiClient.get(
+        '/summaries/expenses',
+        queryParameters: {'period': 'month', 'limit': 50},
+      ),
+      apiClient.get(
+        '/expenses',
+        queryParameters: {
+          'startDate': DateFormat('yyyy-MM-dd').format(monthStart),
+          'limit': 100,
+        },
+      ),
+    ]);
+
+    final payload = _asMap(results[0].data);
     final totals = _asMap(payload['totals']);
-    final expenses = _list(payload['expenses']).map((item) {
+    final summaryExpenses = _list(payload['expenses']).map((item) {
       final category = _string(item['category'], fallback: 'General');
       final date = _formatDate(item['date']);
       return {
@@ -213,11 +229,32 @@ class OwnerDataService {
       };
     }).toList();
 
+    final expensePayload = _asMap(results[1].data);
+    final manualRows = _list(expensePayload['expenses']);
+    final manualExpenses = manualRows.map((item) {
+      final row = _asMap(item);
+      return {
+        'desc': _string(row['title'], fallback: 'Business expense'),
+        'cat': _string(row['category'], fallback: 'General'),
+        'amount': _money(_num(row['amount'])),
+        'date': _formatDate(row['expense_date']),
+      };
+    }).toList();
+
+    double manualTotalSince(DateTime start) {
+      return manualRows.fold<double>(0, (sum, item) {
+        final row = _asMap(item);
+        final date = _parseDate(row['expense_date']);
+        if (date == null) return sum;
+        return date.isBefore(start) ? sum : sum + _num(row['amount']);
+      });
+    }
+
     return OwnerExpensesData(
-      todayTotal: _num(totals['today_total']),
-      weekTotal: _num(totals['week_total']),
-      monthTotal: _num(totals['month_total']),
-      expenses: expenses,
+      todayTotal: _num(totals['today_total']) + manualTotalSince(todayStart),
+      weekTotal: _num(totals['week_total']) + manualTotalSince(weekStart),
+      monthTotal: _num(totals['month_total']) + manualTotalSince(monthStart),
+      expenses: [...manualExpenses, ...summaryExpenses],
     );
   }
 
@@ -402,5 +439,12 @@ class OwnerDataService {
     final parsed = DateTime.tryParse(value?.toString() ?? '');
     if (parsed == null) return '';
     return DateFormat('MMM d').format(parsed.toLocal());
+  }
+
+  static DateTime? _parseDate(dynamic value) {
+    final parsed = DateTime.tryParse(value?.toString() ?? '');
+    if (parsed == null) return null;
+    final local = parsed.toLocal();
+    return DateTime(local.year, local.month, local.day);
   }
 }

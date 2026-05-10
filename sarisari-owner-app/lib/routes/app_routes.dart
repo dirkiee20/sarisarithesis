@@ -8,6 +8,7 @@ import '../screens/analytics/analytics_screen.dart';
 import '../screens/products/products_screen.dart';
 import '../screens/staff/staff_screen.dart';
 import '../screens/expenses/expenses_screen.dart';
+import '../screens/expenses/add_expense_screen.dart';
 import '../screens/reports/reports_screen.dart';
 import '../screens/account/account_screen.dart';
 
@@ -21,6 +22,7 @@ class AppRoutes {
   static const String products = '/products';
   static const String staff = '/staff';
   static const String expenses = '/expenses';
+  static const String addExpense = '/expenses/add';
   static const String reports = '/reports';
   static const String account = '/account';
 
@@ -34,6 +36,7 @@ class AppRoutes {
     products: (_) => const ProductsScreen(),
     staff: (_) => const StaffScreen(),
     expenses: (_) => const ExpensesScreen(),
+    addExpense: (_) => const AddExpenseScreen(),
     reports: (_) => const ReportsScreen(),
     account: (_) => const AccountScreen(),
   };

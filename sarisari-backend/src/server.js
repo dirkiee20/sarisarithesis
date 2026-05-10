@@ -123,7 +123,8 @@ function summaryOnlyBlocker(resourceName) {
 if (SUMMARY_ONLY_MODE) {
   app.use('/api/products', summaryOnlyBlocker('Product'));
   app.use('/api/transactions', summaryOnlyBlocker('Transaction'));
-  app.use('/api/expenses', summaryOnlyBlocker('Expense'));
+  // Owner-entered operating expenses are not cashier detail sync, so keep them enabled.
+  app.use('/api/expenses', expensesRoutes);
   app.use('/api/stock-adjustments', summaryOnlyBlocker('Stock adjustment'));
 } else {
   app.use('/api/products', productsRoutes);
