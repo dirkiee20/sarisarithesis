@@ -311,7 +311,7 @@ router.get(
     const { startDate, endDate } = getDateRange(req.query);
     const limit = Math.min(parseInt(req.query.limit) || 30, 100);
 
-    const [totalsResult, expensesResult] = await Promise.all([
+    const [summaryTotalsResult, manualTotalsResult, expensesResult] = await Promise.all([
       pool.query(
         `SELECT
            COALESCE(SUM(CASE WHEN summary_date = CURRENT_DATE THEN expense_total ELSE 0 END), 0)::float AS today_total,
@@ -328,13 +328,30 @@ router.get(
         [req.tenantId]
       ),
       pool.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN expense_date::date = CURRENT_DATE THEN amount ELSE 0 END), 0)::float AS today_total,
+           COALESCE(SUM(CASE
+             WHEN expense_date::date >= (CURRENT_DATE - ((EXTRACT(ISODOW FROM CURRENT_DATE)::int - 1) * INTERVAL '1 day'))::date
+             THEN amount ELSE 0
+           END), 0)::float AS week_total,
+           COALESCE(SUM(CASE
+             WHEN expense_date::date >= DATE_TRUNC('month', CURRENT_DATE)::date
+             THEN amount ELSE 0
+           END), 0)::float AS month_total
+         FROM expenses
+         WHERE tenant_id = $1`,
+        [req.tenantId]
+      ),
+      pool.query(
         `WITH expense_rows AS (
            SELECT
              summaries.summary_date,
              entry.key AS category,
+             NULL::text AS title,
              COALESCE(NULLIF(entry.value, '')::numeric, 0) AS amount,
              1::int AS expense_count,
-             summaries.received_at
+             summaries.received_at,
+             'cashier_summary'::text AS source
            FROM cashier_daily_summaries summaries
            CROSS JOIN LATERAL jsonb_each_text(summaries.expense_breakdown) entry
            WHERE summaries.tenant_id = $1
@@ -346,35 +363,60 @@ router.get(
            SELECT
              summary_date,
              'General' AS category,
+             NULL::text AS title,
              expense_total::numeric AS amount,
              GREATEST(expense_count, 1)::int AS expense_count,
-             received_at
+             received_at,
+             'cashier_summary'::text AS source
            FROM cashier_daily_summaries
            WHERE tenant_id = $1
              AND summary_date BETWEEN $2 AND $3
              AND expense_total > 0
              AND expense_breakdown = '{}'::jsonb
+
+           UNION ALL
+
+           SELECT
+             expense_date::date AS summary_date,
+             COALESCE(category, 'General') AS category,
+             title,
+             amount::numeric AS amount,
+             1::int AS expense_count,
+             created_at AS received_at,
+             'manual_expense'::text AS source
+           FROM expenses
+           WHERE tenant_id = $1
+             AND expense_date::date BETWEEN $2 AND $3
          )
          SELECT
            summary_date AS date,
            category,
+           title,
+           source,
            COALESCE(SUM(amount), 0)::float AS amount,
            COALESCE(SUM(expense_count), 0)::int AS count,
            MAX(received_at) AS latest_summary_at
          FROM expense_rows
-         GROUP BY summary_date, category
-         ORDER BY summary_date DESC, amount DESC, category ASC
+         GROUP BY source, summary_date, category, title
+         ORDER BY summary_date DESC, latest_summary_at DESC, amount DESC, category ASC
          LIMIT $4`,
         [req.tenantId, startDate, endDate, limit]
       ),
     ]);
+    const summaryTotals = summaryTotalsResult.rows[0] || {};
+    const manualTotals = manualTotalsResult.rows[0] || {};
+    const totals = {
+      today_total: Number(summaryTotals.today_total || 0) + Number(manualTotals.today_total || 0),
+      week_total: Number(summaryTotals.week_total || 0) + Number(manualTotals.week_total || 0),
+      month_total: Number(summaryTotals.month_total || 0) + Number(manualTotals.month_total || 0),
+    };
 
     res.json({
       period: { startDate, endDate },
-      totals: totalsResult.rows[0],
+      totals,
       expenses: expensesResult.rows,
       privacy: {
-        source: 'cashier_daily_summary_expense_breakdown',
+        source: 'cashier_daily_summary_expense_breakdown_and_owner_expenses',
         excludedFields: ['receipt', 'vendor', 'rawExpenseRecord'],
       },
     });
