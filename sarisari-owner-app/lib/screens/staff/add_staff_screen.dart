@@ -1,135 +1,62 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/api_client.dart';
 import '../../theme/owner_theme.dart';
 
-class AddExpenseScreen extends StatefulWidget {
-  const AddExpenseScreen({super.key});
+class AddStaffScreen extends StatefulWidget {
+  const AddStaffScreen({super.key});
 
   @override
-  State<AddExpenseScreen> createState() => _AddExpenseScreenState();
+  State<AddStaffScreen> createState() => _AddStaffScreenState();
 }
 
-class _AddExpenseScreenState extends State<AddExpenseScreen> {
+class _AddStaffScreenState extends State<AddStaffScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _titleCtrl = TextEditingController();
-  final _amountCtrl = TextEditingController();
-  final _descriptionCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _confirmPasswordCtrl = TextEditingController();
 
-  String _category = 'Restocking';
-  DateTime _expenseDate = DateTime.now();
+  String _role = 'cashier';
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
   bool _loading = false;
   String? _error;
 
-  static const List<String> _categories = [
-    'Restocking',
-    'Utilities',
-    'Rent',
-    'Staff Wages',
-    'Transportation',
-    'Packaging',
-    'Maintenance',
-    'Internet/Load',
-    'Supplies',
-    'Marketing',
-    'General',
-  ];
-
-  static const List<_ExpenseTemplate> _templates = [
-    _ExpenseTemplate(
-      title: 'Inventory restock',
-      category: 'Restocking',
-      description: 'Products purchased for resale.',
-      icon: Icons.inventory_2_outlined,
+  static const List<_StaffRoleOption> _roles = [
+    _StaffRoleOption(
+      value: 'cashier',
+      title: 'Cashier',
+      description: 'Can log in to the cashier app and record sales.',
+      icon: Icons.point_of_sale_rounded,
     ),
-    _ExpenseTemplate(
-      title: 'Electricity or water bill',
-      category: 'Utilities',
-      description: 'Monthly utility payment for store operations.',
-      icon: Icons.bolt_outlined,
+    _StaffRoleOption(
+      value: 'staff',
+      title: 'Staff',
+      description: 'General store helper account for day-to-day work.',
+      icon: Icons.badge_outlined,
     ),
-    _ExpenseTemplate(
-      title: 'Store rent',
-      category: 'Rent',
-      description: 'Rental payment for the business space.',
-      icon: Icons.storefront_outlined,
-    ),
-    _ExpenseTemplate(
-      title: 'Staff salary or allowance',
-      category: 'Staff Wages',
-      description: 'Payment for cashier or helper work.',
-      icon: Icons.groups_outlined,
-    ),
-    _ExpenseTemplate(
-      title: 'Delivery or transport',
-      category: 'Transportation',
-      description: 'Fare, fuel, or delivery fee for supplies.',
-      icon: Icons.local_shipping_outlined,
-    ),
-    _ExpenseTemplate(
-      title: 'Plastic bags or packaging',
-      category: 'Packaging',
-      description: 'Packaging materials for customer purchases.',
-      icon: Icons.shopping_bag_outlined,
-    ),
-    _ExpenseTemplate(
-      title: 'Repairs or maintenance',
-      category: 'Maintenance',
-      description: 'Store equipment repair or upkeep.',
-      icon: Icons.build_outlined,
-    ),
-    _ExpenseTemplate(
-      title: 'Internet or mobile load',
-      category: 'Internet/Load',
-      description: 'Connectivity used for store transactions.',
-      icon: Icons.wifi_outlined,
+    _StaffRoleOption(
+      value: 'manager',
+      title: 'Manager',
+      description: 'Can help owners manage store operations.',
+      icon: Icons.manage_accounts_outlined,
     ),
   ];
 
   @override
   void dispose() {
-    _titleCtrl.dispose();
-    _amountCtrl.dispose();
-    _descriptionCtrl.dispose();
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
     super.dispose();
   }
 
-  void _applyTemplate(_ExpenseTemplate template) {
-    setState(() {
-      _titleCtrl.text = template.title;
-      _descriptionCtrl.text = template.description;
-      _category = template.category;
-      _error = null;
-    });
-  }
-
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _expenseDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-                  primary: OwnerTheme.primary,
-                ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked == null) return;
-    setState(() => _expenseDate = picked);
-  }
-
-  Future<void> _saveExpense() async {
+  Future<void> _saveStaff() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -138,23 +65,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     });
 
     try {
-      final amount = double.parse(_amountCtrl.text.replaceAll(',', '').trim());
-      await apiClient.post('/summaries/cashier', data: {
-        'summaryDate': DateFormat('yyyy-MM-dd').format(_expenseDate),
-        'expenseTotal': amount,
-        'expenseCount': 1,
-        'expenses': {
-          'byCategory': {
-            _category: amount,
-          },
-        },
-        'metadata': {
-          'source': 'owner_expense_page',
-          'title': _titleCtrl.text.trim(),
-          'description': _descriptionCtrl.text.trim().isEmpty
-              ? null
-              : _descriptionCtrl.text.trim(),
-        },
+      await apiClient.post('/users/invite', data: {
+        'fullName': _nameCtrl.text.trim(),
+        'email': _emailCtrl.text.trim(),
+        'password': _passwordCtrl.text,
+        'role': _role,
       });
 
       if (!mounted) return;
@@ -164,7 +79,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       setState(() => _error = _messageFromDio(e));
     } catch (_) {
       if (!mounted) return;
-      setState(() => _error = 'Unable to save expense. Please try again.');
+      setState(() => _error = 'Unable to add staff. Please try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -189,7 +104,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return Scaffold(
       backgroundColor: OwnerTheme.background,
       appBar: AppBar(
-        title: const Text('Add Expense'),
+        title: const Text('Add Staff'),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         bottom: PreferredSize(
@@ -202,10 +117,112 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         child: ListView(
           padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
           children: [
-            _IntroCard(),
+            const _CashierLoginInfoCard(),
+            SizedBox(height: 2.h),
+            _FormCard(
+              children: [
+                _Label('Full Name'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _nameCtrl,
+                  textInputAction: TextInputAction.next,
+                  decoration: _inputDecoration(
+                    hint: 'Example: Maria Santos',
+                    icon: Icons.person_outline_rounded,
+                  ),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Full name is required'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                _Label('Email Address'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  decoration: _inputDecoration(
+                    hint: 'staff@yourstore.com',
+                    icon: Icons.email_outlined,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Email is required';
+                    }
+                    if (!value.contains('@')) return 'Enter a valid email';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                _Label('Temporary Password'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _passwordCtrl,
+                  obscureText: _obscurePassword,
+                  textInputAction: TextInputAction.next,
+                  decoration: _inputDecoration(
+                    hint: 'At least 6 characters',
+                    icon: Icons.lock_outline_rounded,
+                    suffix: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        color: const Color(0xFF94A3B8),
+                        size: 20,
+                      ),
+                      onPressed: () => setState(
+                        () => _obscurePassword = !_obscurePassword,
+                      ),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Password is required';
+                    }
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                _Label('Confirm Password'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _confirmPasswordCtrl,
+                  obscureText: _obscureConfirm,
+                  decoration: _inputDecoration(
+                    hint: 'Repeat temporary password',
+                    icon: Icons.verified_user_outlined,
+                    suffix: IconButton(
+                      icon: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        color: const Color(0xFF94A3B8),
+                        size: 20,
+                      ),
+                      onPressed: () => setState(
+                        () => _obscureConfirm = !_obscureConfirm,
+                      ),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please confirm password';
+                    }
+                    if (value != _passwordCtrl.text) {
+                      return 'Passwords do not match';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
             SizedBox(height: 2.h),
             Text(
-              'Common business expenses',
+              'Role',
               style: GoogleFonts.inter(
                 color: OwnerTheme.textPrimary,
                 fontSize: 14,
@@ -213,130 +230,25 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ),
             ),
             SizedBox(height: 1.h),
-            ..._templates.map(
-              (template) => Padding(
+            ..._roles.map(
+              (role) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: _TemplateCard(
-                  template: template,
-                  selected: _titleCtrl.text == template.title,
-                  onTap: () => _applyTemplate(template),
+                child: _RoleCard(
+                  role: role,
+                  selected: _role == role.value,
+                  onTap: () => setState(() => _role = role.value),
                 ),
               ),
             ),
-            SizedBox(height: 1.h),
-            _FormCard(
-              children: [
-                _Label('Expense Name'),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _titleCtrl,
-                  textInputAction: TextInputAction.next,
-                  decoration: _inputDecoration(
-                    hint: 'Example: Inventory restock',
-                    icon: Icons.receipt_long_outlined,
-                  ),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Expense name is required'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _Label('Amount'),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _amountCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                      RegExp(r'^\d*\.?\d{0,2}'),
-                    ),
-                  ],
-                  decoration: _inputDecoration(
-                    hint: '0.00',
-                    icon: Icons.payments_outlined,
-                    prefix: const Text('\u20B1 '),
-                  ),
-                  validator: (value) {
-                    final amount = double.tryParse(
-                      value?.replaceAll(',', '').trim() ?? '',
-                    );
-                    if (amount == null || amount <= 0) {
-                      return 'Enter a valid amount';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                _Label('Category'),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _categories.map((category) {
-                    final selected = category == _category;
-                    return ChoiceChip(
-                      label: Text(category),
-                      selected: selected,
-                      selectedColor: OwnerTheme.primary.withValues(alpha: 0.12),
-                      side: BorderSide(
-                        color:
-                            selected ? OwnerTheme.primary : OwnerTheme.border,
-                      ),
-                      labelStyle: GoogleFonts.inter(
-                        color: selected
-                            ? OwnerTheme.primary
-                            : OwnerTheme.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      onSelected: (_) => setState(() => _category = category),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                _Label('Expense Date'),
-                const SizedBox(height: 8),
-                InkWell(
-                  onTap: _pickDate,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InputDecorator(
-                    decoration: _inputDecoration(
-                      hint: '',
-                      icon: Icons.calendar_month_outlined,
-                    ),
-                    child: Text(
-                      DateFormat('MMM d, yyyy').format(_expenseDate),
-                      style: GoogleFonts.inter(
-                        color: OwnerTheme.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _Label('Notes'),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _descriptionCtrl,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: _inputDecoration(
-                    hint: 'Supplier, receipt note, or reason for expense',
-                    icon: Icons.notes_outlined,
-                  ),
-                ),
-              ],
-            ),
             if (_error != null) ...[
-              SizedBox(height: 2.h),
+              SizedBox(height: 1.h),
               _ErrorBanner(message: _error!),
             ],
             SizedBox(height: 2.h),
             SizedBox(
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: _loading ? null : _saveExpense,
+                onPressed: _loading ? null : _saveStaff,
                 icon: _loading
                     ? const SizedBox(
                         width: 20,
@@ -346,9 +258,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           valueColor: AlwaysStoppedAnimation(Colors.white),
                         ),
                       )
-                    : const Icon(Icons.check_rounded),
+                    : const Icon(Icons.person_add_alt_1_rounded),
                 label: Text(
-                  _loading ? 'Saving...' : 'Save Expense',
+                  _loading ? 'Creating...' : 'Create Staff Account',
                   style: GoogleFonts.inter(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
@@ -364,21 +276,23 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 }
 
-class _ExpenseTemplate {
-  const _ExpenseTemplate({
+class _StaffRoleOption {
+  const _StaffRoleOption({
+    required this.value,
     required this.title,
-    required this.category,
     required this.description,
     required this.icon,
   });
 
+  final String value;
   final String title;
-  final String category;
   final String description;
   final IconData icon;
 }
 
-class _IntroCard extends StatelessWidget {
+class _CashierLoginInfoCard extends StatelessWidget {
+  const _CashierLoginInfoCard();
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -396,10 +310,7 @@ class _IntroCard extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(
-              Icons.account_balance_wallet_outlined,
-              color: Colors.white,
-            ),
+            child: const Icon(Icons.point_of_sale_rounded, color: Colors.white),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -407,7 +318,7 @@ class _IntroCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Track operating costs',
+                  'Cashier app ready',
                   style: GoogleFonts.inter(
                     color: Colors.white,
                     fontSize: 16,
@@ -416,7 +327,7 @@ class _IntroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Record restocking, rent, utilities, wages, packaging, and other daily business expenses.',
+                  'Staff created here can sign in to the cashier app using this email and temporary password.',
                   style: GoogleFonts.inter(
                     color: Colors.white.withValues(alpha: 0.72),
                     fontSize: 12,
@@ -432,14 +343,14 @@ class _IntroCard extends StatelessWidget {
   }
 }
 
-class _TemplateCard extends StatelessWidget {
-  const _TemplateCard({
-    required this.template,
+class _RoleCard extends StatelessWidget {
+  const _RoleCard({
+    required this.role,
     required this.selected,
     required this.onTap,
   });
 
-  final _ExpenseTemplate template;
+  final _StaffRoleOption role;
   final bool selected;
   final VoidCallback onTap;
 
@@ -448,10 +359,13 @@ class _TemplateCard extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: selected
+              ? OwnerTheme.primary.withValues(alpha: 0.08)
+              : Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected ? OwnerTheme.primary : OwnerTheme.border,
@@ -461,13 +375,13 @@ class _TemplateCard extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
-                color: OwnerTheme.primary.withValues(alpha: 0.08),
+                color: OwnerTheme.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(template.icon, color: OwnerTheme.primary, size: 20),
+              child: Icon(role.icon, color: OwnerTheme.primary, size: 22),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -475,7 +389,7 @@ class _TemplateCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    template.title,
+                    role.title,
                     style: GoogleFonts.inter(
                       color: OwnerTheme.textPrimary,
                       fontSize: 13,
@@ -484,11 +398,11 @@ class _TemplateCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    template.category,
+                    role.description,
                     style: GoogleFonts.inter(
                       color: OwnerTheme.textSecondary,
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      height: 1.35,
                     ),
                   ),
                 ],
@@ -496,8 +410,8 @@ class _TemplateCard extends StatelessWidget {
             ),
             Icon(
               selected
-                  ? Icons.check_circle_rounded
-                  : Icons.add_circle_outline_rounded,
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
               color: selected ? OwnerTheme.primary : OwnerTheme.textMuted,
             ),
           ],
@@ -549,13 +463,13 @@ class _Label extends StatelessWidget {
 InputDecoration _inputDecoration({
   required String hint,
   required IconData icon,
-  Widget? prefix,
+  Widget? suffix,
 }) {
   return InputDecoration(
     hintText: hint,
     hintStyle: GoogleFonts.inter(color: OwnerTheme.textMuted, fontSize: 14),
     prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20),
-    prefix: prefix,
+    suffixIcon: suffix,
   );
 }
 

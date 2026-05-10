@@ -7,6 +7,7 @@ import '../screens/assistant/assistant_screen.dart';
 import '../screens/analytics/analytics_screen.dart';
 import '../screens/products/products_screen.dart';
 import '../screens/staff/staff_screen.dart';
+import '../screens/staff/add_staff_screen.dart';
 import '../screens/expenses/expenses_screen.dart';
 import '../screens/expenses/add_expense_screen.dart';
 import '../screens/reports/reports_screen.dart';
@@ -21,6 +22,7 @@ class AppRoutes {
   static const String analytics = '/analytics';
   static const String products = '/products';
   static const String staff = '/staff';
+  static const String addStaff = '/staff/add';
   static const String expenses = '/expenses';
   static const String addExpense = '/expenses/add';
   static const String reports = '/reports';
@@ -35,6 +37,7 @@ class AppRoutes {
     analytics: (_) => const AnalyticsScreen(),
     products: (_) => const ProductsScreen(),
     staff: (_) => const StaffScreen(),
+    addStaff: (_) => const AddStaffScreen(),
     expenses: (_) => const ExpensesScreen(),
     addExpense: (_) => const AddExpenseScreen(),
     reports: (_) => const ReportsScreen(),

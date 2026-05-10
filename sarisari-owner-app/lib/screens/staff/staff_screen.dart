@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/owner_data_service.dart';
+import '../../routes/app_routes.dart';
 import '../../theme/owner_theme.dart';
 import '../../widgets/owner_assistant_bubble.dart';
 import '../../widgets/owner_bottom_bar.dart';
@@ -47,6 +48,17 @@ class _StaffScreenState extends State<StaffScreen> {
     }
   }
 
+  Future<void> _openAddStaff() async {
+    final created = await Navigator.of(context).pushNamed(AppRoutes.addStaff);
+    if (created == true) {
+      await _loadStaff();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Staff account added successfully')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -61,8 +73,7 @@ class _StaffScreenState extends State<StaffScreen> {
         ),
         actions: [
           TextButton.icon(
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Add staff — coming soon'))),
+            onPressed: _openAddStaff,
             icon: const Icon(Icons.add_rounded,
                 size: 18, color: OwnerTheme.primary),
             label: Text('Add',
@@ -78,48 +89,49 @@ class _StaffScreenState extends State<StaffScreen> {
           : _error != null
               ? _StaffMessage(message: _error!, onRetry: _loadStaff)
               : ListView(
-        padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-        children: [
-          // Summary row
-          Row(
-            children: [
-              _StatTile(
-                  label: 'Total Staff',
-                  value: '${_data?.totalStaff ?? 0}',
-                  icon: Icons.people_rounded,
-                  color: OwnerTheme.primary),
-              SizedBox(width: 3.w),
-              _StatTile(
-                  label: 'Active',
-                  value: '${_data?.activeStaff ?? 0}',
-                  icon: Icons.check_circle_rounded,
-                  color: OwnerTheme.accent),
-              SizedBox(width: 3.w),
-              _StatTile(
-                  label: 'Inactive',
-                  value: '${_data?.inactiveStaff ?? 0}',
-                  icon: Icons.free_breakfast_rounded,
-                  color: OwnerTheme.warning),
-            ],
-          ),
-          SizedBox(height: 2.5.h),
+                  padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                  children: [
+                    // Summary row
+                    Row(
+                      children: [
+                        _StatTile(
+                            label: 'Total Staff',
+                            value: '${_data?.totalStaff ?? 0}',
+                            icon: Icons.people_rounded,
+                            color: OwnerTheme.primary),
+                        SizedBox(width: 3.w),
+                        _StatTile(
+                            label: 'Active',
+                            value: '${_data?.activeStaff ?? 0}',
+                            icon: Icons.check_circle_rounded,
+                            color: OwnerTheme.accent),
+                        SizedBox(width: 3.w),
+                        _StatTile(
+                            label: 'Inactive',
+                            value: '${_data?.inactiveStaff ?? 0}',
+                            icon: Icons.free_breakfast_rounded,
+                            color: OwnerTheme.warning),
+                      ],
+                    ),
+                    SizedBox(height: 2.5.h),
 
-          Text('All Staff Members',
-              style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: OwnerTheme.textPrimary)),
-          SizedBox(height: 1.h),
+                    Text('All Staff Members',
+                        style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: OwnerTheme.textPrimary)),
+                    SizedBox(height: 1.h),
 
-          if ((_data?.staff ?? const []).isEmpty)
-            const _StaffEmptyCard(
-              message: 'No staff accounts found for this store.',
-            )
-          else
-            ...(_data?.staff ?? const []).map((s) => _StaffCard(staff: s)),
-          SizedBox(height: 10.h),
-        ],
-      ),
+                    if ((_data?.staff ?? const []).isEmpty)
+                      const _StaffEmptyCard(
+                        message: 'No staff accounts found for this store.',
+                      )
+                    else
+                      ...(_data?.staff ?? const [])
+                          .map((s) => _StaffCard(staff: s)),
+                    SizedBox(height: 10.h),
+                  ],
+                ),
       floatingActionButton: const OwnerAssistantBubble(),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: const OwnerBottomBar(currentIndex: 3),
@@ -229,6 +241,7 @@ class _StaffCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = staff['status'] == 'Active';
+    final email = staff['email'] as String? ?? '';
     final initials =
         (staff['name'] as String).split(' ').map((n) => n[0]).take(2).join();
     return Container(
@@ -294,6 +307,10 @@ class _StaffCard extends StatelessWidget {
                 Text(staff['role'] as String,
                     style: GoogleFonts.inter(
                         fontSize: 11, color: OwnerTheme.textMuted)),
+                if (email.isNotEmpty)
+                  Text(email,
+                      style: GoogleFonts.inter(
+                          fontSize: 11, color: OwnerTheme.textMuted)),
                 Text(staff['shift'] as String,
                     style: GoogleFonts.inter(
                         fontSize: 11, color: OwnerTheme.textMuted)),
@@ -318,4 +335,3 @@ class _StaffCard extends StatelessWidget {
     );
   }
 }
-

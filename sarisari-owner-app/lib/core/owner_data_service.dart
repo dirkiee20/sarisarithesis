@@ -275,12 +275,18 @@ class OwnerDataService {
       }
     }
 
-    final staff = _list(usersPayload['users']).map((user) {
+    final staffUsers = _list(usersPayload['users']).where((user) {
+      final role = _string(_asMap(user)['role'], fallback: 'staff');
+      return role != 'owner';
+    });
+
+    final staff = staffUsers.map((user) {
       final id = _string(user['id']);
       final isActive = user['is_active'] == true;
       final role = _string(user['role'], fallback: 'staff');
       return {
         'name': _string(user['full_name'], fallback: 'Staff member'),
+        'email': _string(user['email']),
         'role': _roleLabel(role),
         'status': isActive ? 'Active' : 'Inactive',
         'shift': _lastSeenLabel(user['last_login_at']),
