@@ -4,6 +4,9 @@ enum CashierAssistantIntent {
   greeting,
   help,
   createSale,
+  addStock,
+  addExpense,
+  generateReport,
   priceCheck,
   stockCheck,
   lowStock,
@@ -31,18 +34,78 @@ class CashierSaleLine {
   }
 }
 
+class CashierStockAction {
+  const CashierStockAction({
+    required this.product,
+    required this.quantityToAdd,
+  });
+
+  final ProductModel product;
+  final int quantityToAdd;
+
+  bool get canExecute => product.id != null && quantityToAdd > 0;
+}
+
+class CashierExpenseAction {
+  const CashierExpenseAction({
+    required this.title,
+    required this.category,
+    required this.amount,
+  });
+
+  final String title;
+  final String category;
+  final double amount;
+
+  bool get canExecute => title.isNotEmpty && category.isNotEmpty && amount > 0;
+}
+
+class CashierReportAction {
+  const CashierReportAction({
+    required this.reportType,
+    required this.period,
+  });
+
+  final String reportType;
+  final String period;
+}
+
 class CashierAssistantReply {
   const CashierAssistantReply({
     required this.intent,
     required this.message,
     this.saleLines = const [],
+    this.paymentMethod,
+    this.paymentAmount,
+    this.draftOnly = false,
+    this.stockAction,
+    this.expenseAction,
+    this.reportAction,
   });
 
   final CashierAssistantIntent intent;
   final String message;
   final List<CashierSaleLine> saleLines;
+  final String? paymentMethod;
+  final double? paymentAmount;
+  final bool draftOnly;
+  final CashierStockAction? stockAction;
+  final CashierExpenseAction? expenseAction;
+  final CashierReportAction? reportAction;
 
-  bool get canOpenCheckout => saleLines.isNotEmpty;
+  double get saleTotal {
+    return saleLines.fold<double>(0, (sum, line) => sum + line.subtotal);
+  }
+
+  bool get canCompleteSale {
+    return saleLines.isNotEmpty &&
+        !draftOnly &&
+        paymentMethod != null &&
+        paymentAmount != null &&
+        paymentAmount! >= saleTotal;
+  }
+
+  bool get canOpenCheckout => saleLines.isNotEmpty && !canCompleteSale;
 
   List<Map<String, dynamic>> get cartItems {
     return saleLines.map((line) => line.toCartItem()).toList();
@@ -65,15 +128,27 @@ class CashierAssistantParser {
       case CashierAssistantIntent.greeting:
         return const CashierAssistantReply(
           intent: CashierAssistantIntent.greeting,
-          message: 'Hi. I can help prepare sales, check prices, check stock, '
-              'and show low-stock items.',
+          message: 'Hi. I can create sales, prepare draft checkouts, add '
+              'stock, add expenses, generate reports, check prices, and check '
+              'low-stock items.',
         );
       case CashierAssistantIntent.help:
         return const CashierAssistantReply(
           intent: CashierAssistantIntent.help,
-          message: 'Try: "sell 2 coke and 1 skyflakes", "price lucky me", '
-              '"stock coffee", "low stock", or "sales today".',
+          message: 'Try: "sell 2 coke cash 100" to complete a sale, '
+              '"draft only sell 2 coke" to open checkout later, '
+              '"add stock 10 coke", "add expense utilities 250", '
+              '"generate sales report today", "price lucky me", '
+              '"stock coffee", "low stock", or "sales today". '
+              'Direct sale rules: include product, quantity, payment method, '
+              'and amount received.',
         );
+      case CashierAssistantIntent.addStock:
+        return _addStock(text, products);
+      case CashierAssistantIntent.addExpense:
+        return _addExpense(text);
+      case CashierAssistantIntent.generateReport:
+        return _generateReport(text);
       case CashierAssistantIntent.createSale:
         return _createSale(text, products);
       case CashierAssistantIntent.priceCheck:
@@ -92,8 +167,9 @@ class CashierAssistantParser {
       case CashierAssistantIntent.unknown:
         return const CashierAssistantReply(
           intent: CashierAssistantIntent.unknown,
-          message: 'I can help with sale drafts, prices, stock, low-stock '
-              'items, and today sales.',
+          message: 'I can complete sales, create sale drafts, add stock, add '
+              'expenses, generate reports, check prices, check stock, '
+              'show low-stock items, and summarize today sales.',
         );
     }
   }
@@ -149,17 +225,138 @@ class CashierAssistantParser {
     }
 
     final total = lines.fold<double>(0, (sum, line) => sum + line.subtotal);
+    final draftOnly = _wantsDraftOnly(text);
+    final paymentMethod = _paymentMethod(text);
+    final paymentAmount = _paymentAmount(text);
     final summary = lines
         .map((line) =>
             '${line.quantity} x ${line.product.name} (${_money(line.subtotal)})')
         .join(', ');
     final warningText = warnings.isEmpty ? '' : ' ${warnings.join('. ')}.';
 
+    if (!draftOnly && paymentMethod != null && paymentAmount != null) {
+      if (paymentAmount < total) {
+        return CashierAssistantReply(
+          intent: CashierAssistantIntent.createSale,
+          saleLines: lines,
+          paymentMethod: paymentMethod,
+          paymentAmount: paymentAmount,
+          message: 'I found the sale: $summary. Total payment amount is '
+              '${_money(total)}, but amount received is only '
+              '${_money(paymentAmount)}. Please enter at least '
+              '${_money(total)}, or say "draft only" to prepare checkout '
+              'without completing the sale.$warningText',
+        );
+      }
+
+      return CashierAssistantReply(
+        intent: CashierAssistantIntent.createSale,
+        saleLines: lines,
+        paymentMethod: paymentMethod,
+        paymentAmount: paymentAmount,
+        message: 'Ready to complete sale: $summary. Total is ${_money(total)}, '
+            '$paymentMethod received ${_money(paymentAmount)}, change is '
+            '${_money(paymentAmount - total)}.$warningText',
+      );
+    }
+
+    final ruleHint = draftOnly
+        ? 'Tap Open Checkout when you are ready.'
+        : 'To complete directly, include payment method and amount received, '
+            'for example "sell 2 coke cash 100". You can also say '
+            '"draft only" to keep this as checkout draft.';
+
     return CashierAssistantReply(
       intent: CashierAssistantIntent.createSale,
       saleLines: lines,
+      draftOnly: draftOnly,
       message: 'I prepared a sale draft: $summary. Total is '
-          '${_money(total)}.$warningText Tap Open Checkout to continue.',
+          '${_money(total)}.$warningText $ruleHint',
+    );
+  }
+
+  CashierAssistantReply _addStock(String text, List<ProductModel> products) {
+    final product = _bestProductMatch(text, products);
+    if (product == null) {
+      return const CashierAssistantReply(
+        intent: CashierAssistantIntent.addStock,
+        message: 'Which product should I add stock to? Example: '
+            '"add stock 10 coke".',
+      );
+    }
+    if (product.id == null) {
+      return CashierAssistantReply(
+        intent: CashierAssistantIntent.addStock,
+        message:
+            '${product.name} cannot be updated because it has no product ID.',
+      );
+    }
+
+    final alias = _matchedAlias(text, product);
+    final quantity = alias == null
+        ? _firstPositiveNumber(text)
+        : _explicitQuantityNearAlias(text, alias);
+    if (quantity == null || quantity <= 0) {
+      return CashierAssistantReply(
+        intent: CashierAssistantIntent.addStock,
+        message: 'How many ${product.name} units should I add? Example: '
+            '"add stock 10 ${product.name}".',
+      );
+    }
+
+    final newStock = product.stock + quantity;
+    return CashierAssistantReply(
+      intent: CashierAssistantIntent.addStock,
+      stockAction: CashierStockAction(
+        product: product,
+        quantityToAdd: quantity,
+      ),
+      message: 'Ready to add $quantity unit${quantity == 1 ? '' : 's'} to '
+          '${product.name}. Stock will become $newStock.',
+    );
+  }
+
+  CashierAssistantReply _addExpense(String text) {
+    final amount = _paymentAmount(text) ?? _firstMoneyAmount(text);
+    final category = _expenseCategory(text);
+    final title = _expenseTitle(text, category);
+
+    if (amount == null || amount <= 0) {
+      return const CashierAssistantReply(
+        intent: CashierAssistantIntent.addExpense,
+        message: 'Please include the expense amount. Example: '
+            '"add expense utilities 250 electricity bill".',
+      );
+    }
+    if (category == null && title.isEmpty) {
+      return const CashierAssistantReply(
+        intent: CashierAssistantIntent.addExpense,
+        message: 'Please include what the expense is for. Examples: '
+            '"add expense rent 3000" or "add expense packaging 120".',
+      );
+    }
+
+    final resolvedCategory = category ?? 'General';
+    final resolvedTitle = title.isEmpty ? resolvedCategory : title;
+    return CashierAssistantReply(
+      intent: CashierAssistantIntent.addExpense,
+      expenseAction: CashierExpenseAction(
+        title: resolvedTitle,
+        category: resolvedCategory,
+        amount: amount,
+      ),
+      message: 'Ready to add expense: $resolvedTitle, category '
+          '$resolvedCategory, amount ${_money(amount)}.',
+    );
+  }
+
+  CashierAssistantReply _generateReport(String text) {
+    final period = _reportPeriod(text);
+    final type = _reportType(text);
+    return CashierAssistantReply(
+      intent: CashierAssistantIntent.generateReport,
+      reportAction: CashierReportAction(reportType: type, period: period),
+      message: 'Generating $type report for $period.',
     );
   }
 
@@ -235,6 +432,34 @@ class CashierAssistantParser {
     if (text.isEmpty) return CashierAssistantIntent.help;
     if (_hasAny(text, const ['help', 'commands', 'what can'])) {
       return CashierAssistantIntent.help;
+    }
+    if (_hasAny(text, const [
+      'report',
+      'generate report',
+      'create report',
+      'sales report',
+      'profit report',
+      'inventory report',
+    ])) {
+      return CashierAssistantIntent.generateReport;
+    }
+    if (_hasAny(text, const [
+      'add expense',
+      'record expense',
+      'expense',
+      'gastos',
+    ])) {
+      return CashierAssistantIntent.addExpense;
+    }
+    if (_hasAny(text, const [
+      'add stock',
+      'add stocks',
+      'restock',
+      'increase stock',
+      'stock in',
+      'refill',
+    ])) {
+      return CashierAssistantIntent.addStock;
     }
     if (_hasAny(text, const ['hello', 'hi', 'hey', 'good morning'])) {
       return CashierAssistantIntent.greeting;
@@ -362,9 +587,142 @@ class CashierAssistantParser {
     return 1;
   }
 
+  int? _explicitQuantityNearAlias(String text, String alias) {
+    final pattern = _aliasPattern(alias);
+    final before =
+        RegExp('(?:^| )(\\d+)\\s*(?:x|pcs?|pieces?|units?)?\\s*$pattern');
+    final beforeMatch = before.firstMatch(text);
+    if (beforeMatch != null) {
+      return _positiveQuantity(beforeMatch.group(1));
+    }
+
+    final after = RegExp('$pattern\\s*(?:x\\s*)?(\\d+)');
+    final afterMatch = after.firstMatch(text);
+    if (afterMatch != null) {
+      return _positiveQuantity(afterMatch.group(1));
+    }
+
+    return null;
+  }
+
   int _positiveQuantity(String? value) {
     final quantity = int.tryParse(value ?? '') ?? 1;
     return quantity < 1 ? 1 : quantity;
+  }
+
+  int? _firstPositiveNumber(String text) {
+    final match = RegExp(r'(^| )(\d+)( |$)').firstMatch(text);
+    if (match == null) return null;
+    return _positiveQuantity(match.group(2));
+  }
+
+  bool _wantsDraftOnly(String text) {
+    return _hasAny(text, const [
+      'draft only',
+      'only draft',
+      'make draft',
+      'prepare draft',
+      'open checkout',
+      'cart only',
+    ]);
+  }
+
+  String? _paymentMethod(String text) {
+    if (_hasAny(text, const ['gcash', 'g cash'])) return 'gcash';
+    if (_hasAny(text, const ['credit', 'utang'])) return 'credit';
+    if (_hasAny(text, const ['cash', 'paid', 'received', 'tendered'])) {
+      return 'cash';
+    }
+    return null;
+  }
+
+  double? _paymentAmount(String text) {
+    final patterns = [
+      RegExp(
+          r'(?:paid|payment|received|tendered|cash|gcash|credit|amount)\s*(?:php|p)?\s*(\d+(?:\.\d{1,2})?)'),
+      RegExp(
+          r'(?:php|p)\s*(\d+(?:\.\d{1,2})?)\s*(?:paid|payment|received|tendered|cash|gcash|credit)'),
+    ];
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(text);
+      if (match == null) continue;
+      final amount = double.tryParse(match.group(1) ?? '');
+      if (amount != null && amount > 0) return amount;
+    }
+    return null;
+  }
+
+  double? _firstMoneyAmount(String text) {
+    final match = RegExp(r'(?:php|p)?\s*(\d+(?:\.\d{1,2})?)').firstMatch(text);
+    if (match == null) return null;
+    final amount = double.tryParse(match.group(1) ?? '');
+    return amount != null && amount > 0 ? amount : null;
+  }
+
+  String? _expenseCategory(String text) {
+    const categories = {
+      'restocking': ['restock', 'restocking', 'inventory'],
+      'utilities': ['utility', 'utilities', 'electric', 'water', 'bill'],
+      'rent': ['rent', 'rental'],
+      'staff wages': ['wage', 'salary', 'allowance', 'staff'],
+      'transportation': ['transport', 'delivery', 'fare', 'fuel'],
+      'packaging': ['packaging', 'plastic', 'bag'],
+      'maintenance': ['repair', 'maintenance'],
+      'internet/load': ['internet', 'load', 'wifi'],
+      'supplies': ['supplies', 'supply'],
+      'marketing': ['marketing', 'promo', 'ads'],
+    };
+    for (final entry in categories.entries) {
+      if (entry.value.any((word) => text.contains(word))) return entry.key;
+    }
+    return null;
+  }
+
+  String _expenseTitle(String text, String? category) {
+    var cleaned = text
+        .replaceAll(
+            RegExp(
+                r'\b(add|record|expense|expenses|gastos|php|paid|payment|received|cash|gcash|credit)\b'),
+            ' ')
+        .replaceAll(RegExp(r'\d+(?:\.\d{1,2})?'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (category != null) {
+      for (final token in category.split('/')) {
+        cleaned = cleaned.replaceAll(token, '').trim();
+      }
+    }
+    return cleaned.isEmpty ? (category ?? '') : _titleCase(cleaned);
+  }
+
+  String _reportPeriod(String text) {
+    if (text.contains('year')) return 'Year';
+    if (text.contains('month')) return 'Month';
+    if (text.contains('week')) return 'Week';
+    return 'Today';
+  }
+
+  String _reportType(String text) {
+    if (text.contains('inventory') || text.contains('stock')) {
+      return 'inventory';
+    }
+    if (text.contains('profit') ||
+        text.contains('loss') ||
+        text.contains('income')) {
+      return 'profit';
+    }
+    if (text.contains('expense') || text.contains('gastos')) {
+      return 'expense';
+    }
+    return 'sales';
+  }
+
+  String _titleCase(String value) {
+    return value
+        .split(' ')
+        .where((word) => word.isNotEmpty)
+        .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+        .join(' ');
   }
 
   List<String> _significantTokens(String value) {

@@ -10,6 +10,7 @@
     "setup-db:supabase": "node src/database/setup.js --skip-create",
     "seed-admin": "node src/database/seed-admin.js",
     "seed-demo-store": "node src/database/seed-demo-store.js",
+    "seed-dirk-store": "node src/database/seed-dirk-store.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

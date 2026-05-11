@@ -3,7 +3,11 @@ import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
 import '../../core/cashier_assistant.dart';
+import '../../data/models/expense_model.dart';
 import '../../data/models/product_model.dart';
+import '../../services/analytics_service.dart';
+import '../../services/expense_service.dart';
+import '../../services/file_service.dart';
 import '../../services/product_service.dart';
 import '../../services/transaction_service.dart';
 
@@ -18,6 +22,8 @@ class _CashierAssistantScreenState extends State<CashierAssistantScreen> {
   final _parser = const CashierAssistantParser();
   final _productService = ProductService();
   final _transactionService = TransactionService();
+  final _expenseService = ExpenseService();
+  final _analyticsService = AnalyticsService();
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
 
@@ -28,11 +34,12 @@ class _CashierAssistantScreenState extends State<CashierAssistantScreen> {
   int _todayTransactions = 0;
 
   static const _quickPrompts = [
-    'sell 2 coke',
+    'sell 2 coke cash 100',
+    'draft only sell 2 coke',
+    'add stock 10 coke',
+    'add expense utilities 250',
+    'generate sales report today',
     'price lucky me',
-    'stock coffee',
-    'low stock',
-    'sales today',
   ];
 
   @override
@@ -48,7 +55,7 @@ class _CashierAssistantScreenState extends State<CashierAssistantScreen> {
     super.dispose();
   }
 
-  Future<void> _loadAssistantContext() async {
+  Future<void> _loadAssistantContext({bool resetMessages = true}) async {
     try {
       final products = await _productService.getAllProducts();
       final now = DateTime.now();
@@ -71,28 +78,34 @@ class _CashierAssistantScreenState extends State<CashierAssistantScreen> {
         _todayRevenue = revenue;
         _todayTransactions = count;
         _isLoading = false;
-        _messages = [
-          _ChatMessage.assistant(
-            'Hi. Tell me a sale like "sell 2 coke and 1 skyflakes", '
-            'or ask for price, stock, low stock, or sales today.',
-          ),
-        ];
+        if (resetMessages) {
+          _messages = [
+            _ChatMessage.assistant(
+              'Hi. I can complete sales directly when you include product, '
+              'quantity, payment method, and amount received. You can also ask '
+              'for draft only, add stock, add expense, generate reports, or '
+              'check price and stock.',
+            ),
+          ];
+        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _messages = [
-          _ChatMessage.assistant(
-            'I could not load products yet. Check the local product data, '
-            'then try again.',
-          ),
-        ];
+        if (resetMessages) {
+          _messages = [
+            _ChatMessage.assistant(
+              'I could not load products yet. Check the local product data, '
+              'then try again.',
+            ),
+          ];
+        }
       });
     }
   }
 
-  void _send([String? prompt]) {
+  Future<void> _send([String? prompt]) async {
     final text = (prompt ?? _inputController.text).trim();
     if (text.isEmpty) return;
 
@@ -104,18 +117,187 @@ class _CashierAssistantScreenState extends State<CashierAssistantScreen> {
     );
 
     setState(() {
-      _messages = [
-        ..._messages,
-        _ChatMessage.user(text),
-        _ChatMessage.assistant(
-          reply.message,
-          cartItems: reply.canOpenCheckout ? reply.cartItems : null,
-        ),
-      ];
+      _messages = [..._messages, _ChatMessage.user(text)];
       _inputController.clear();
     });
+
+    if (reply.canCompleteSale) {
+      await _completeAssistantSale(reply);
+    } else if (reply.stockAction?.canExecute == true) {
+      await _completeStockAction(reply.stockAction!);
+    } else if (reply.expenseAction?.canExecute == true) {
+      await _completeExpenseAction(reply.expenseAction!);
+    } else if (reply.reportAction != null) {
+      await _completeReportAction(reply.reportAction!);
+    } else {
+      _addAssistantMessage(
+        reply.message,
+        cartItems: reply.canOpenCheckout ? reply.cartItems : null,
+      );
+    }
     _scrollToBottom();
   }
+
+  void _addAssistantMessage(
+    String message, {
+    List<Map<String, dynamic>>? cartItems,
+  }) {
+    if (!mounted) return;
+    setState(() {
+      _messages = [
+        ..._messages,
+        _ChatMessage.assistant(message, cartItems: cartItems),
+      ];
+    });
+  }
+
+  Future<void> _completeAssistantSale(CashierAssistantReply reply) async {
+    try {
+      await _transactionService.createTransaction(
+        reply.cartItems,
+        paymentMethod: reply.paymentMethod,
+        paymentAmount: reply.paymentAmount,
+        notes: 'Created by cashier assistant',
+      );
+      final total = reply.saleTotal;
+      final received = reply.paymentAmount ?? 0;
+      await _loadAssistantContext(resetMessages: false);
+      _addAssistantMessage(
+        'Sale completed. Total: ${_money(total)}. Received: '
+        '${_money(received)} via ${reply.paymentMethod}. Change: '
+        '${_money(received - total)}. Stock and sales totals were refreshed.',
+      );
+    } catch (e) {
+      _addAssistantMessage('I could not complete the sale: $e');
+    }
+  }
+
+  Future<void> _completeStockAction(CashierStockAction action) async {
+    try {
+      final product = action.product;
+      final newStock = product.stock + action.quantityToAdd;
+      await _productService.adjustStock(
+        product.id!,
+        newStock,
+        'Assistant Stock Add',
+        notes: 'Added ${action.quantityToAdd} units through cashier assistant',
+      );
+      await _loadAssistantContext(resetMessages: false);
+      _addAssistantMessage(
+        'Stock updated. Added ${action.quantityToAdd} unit'
+        '${action.quantityToAdd == 1 ? '' : 's'} to ${product.name}. '
+        'New stock: $newStock.',
+      );
+    } catch (e) {
+      _addAssistantMessage('I could not add stock: $e');
+    }
+  }
+
+  Future<void> _completeExpenseAction(CashierExpenseAction action) async {
+    try {
+      await _expenseService.createExpense(
+        ExpenseModel(
+          title: action.title,
+          category: action.category,
+          amount: action.amount,
+          description: 'Created by cashier assistant',
+        ),
+      );
+      await _loadAssistantContext(resetMessages: false);
+      _addAssistantMessage(
+        'Expense added. ${action.title} under ${action.category}: '
+        '${_money(action.amount)}.',
+      );
+    } catch (e) {
+      _addAssistantMessage('I could not add the expense: $e');
+    }
+  }
+
+  Future<void> _completeReportAction(CashierReportAction action) async {
+    try {
+      final report = await _buildAssistantReport(action);
+      final fileName =
+          'assistant_${action.reportType}_${action.period.toLowerCase()}_${DateTime.now().millisecondsSinceEpoch}';
+      final path = await FileService.saveReportToFile(report, fileName, 'txt');
+      _addAssistantMessage(
+        path == null ? report : '$report\n\nSaved report file:\n$path',
+      );
+    } catch (e) {
+      _addAssistantMessage('I could not generate the report: $e');
+    }
+  }
+
+  Future<String> _buildAssistantReport(CashierReportAction action) async {
+    final period = action.period;
+    final revenue = await _analyticsService.getRevenueForPeriod(period);
+    final profit = await _analyticsService.getProfitForPeriod(period);
+    final productCosts = await _analyticsService.getExpensesForPeriod(period);
+    final businessExpenses =
+        await _analyticsService.getBusinessExpensesForPeriod(period);
+    final transactionCount =
+        await _analyticsService.getTransactionCountForPeriod(period);
+    final margin = revenue == 0 ? 0 : (profit / revenue) * 100;
+    final netIncome = profit - businessExpenses;
+    final buffer = StringBuffer()
+      ..writeln('SariSari Pro Assistant Report')
+      ..writeln('Type: ${action.reportType}')
+      ..writeln('Period: $period')
+      ..writeln('Generated: ${DateTime.now().toLocal()}')
+      ..writeln('')
+      ..writeln('Sales')
+      ..writeln('- Revenue: ${_money(revenue)}')
+      ..writeln('- Transactions: $transactionCount')
+      ..writeln('- Gross profit: ${_money(profit)}')
+      ..writeln('- Gross margin: ${margin.toStringAsFixed(1)}%')
+      ..writeln('')
+      ..writeln('Expenses')
+      ..writeln('- Product cost: ${_money(productCosts)}')
+      ..writeln('- Business expenses: ${_money(businessExpenses)}')
+      ..writeln('- Net income after business expenses: ${_money(netIncome)}');
+
+    if (action.reportType == 'inventory') {
+      final products = await _productService.getAllProducts();
+      final lowStock = products.where((product) => product.stock <= 10).toList()
+        ..sort((a, b) => a.stock.compareTo(b.stock));
+      buffer
+        ..writeln('')
+        ..writeln('Inventory')
+        ..writeln('- Total products: ${products.length}')
+        ..writeln('- Low-stock products: ${lowStock.length}');
+      for (final product in lowStock.take(8)) {
+        buffer.writeln('  - ${product.name}: ${product.stock} left');
+      }
+    }
+
+    if (action.reportType == 'expense') {
+      final categories =
+          await _analyticsService.getExpensesByCategoryForPeriod(period);
+      buffer
+        ..writeln('')
+        ..writeln('Expense categories');
+      if (categories.isEmpty) {
+        buffer.writeln('- No product cost categories found.');
+      } else {
+        for (final entry in categories.entries) {
+          buffer.writeln('- ${entry.key}: ${_money(entry.value)}');
+        }
+      }
+    }
+
+    final topProducts = await _analyticsService.getTopProductsForPeriod(period);
+    if (topProducts.isNotEmpty) {
+      buffer
+        ..writeln('')
+        ..writeln('Top products');
+      for (final product in topProducts.take(5)) {
+        buffer.writeln('- ${product['name']}: ${product['quantity']} sold');
+      }
+    }
+
+    return buffer.toString().trim();
+  }
+
+  String _money(num amount) => 'PHP ${amount.toStringAsFixed(2)}';
 
   Future<void> _openCheckout(List<Map<String, dynamic>> cartItems) async {
     final result = await Navigator.pushNamed(
@@ -128,7 +310,7 @@ class _CashierAssistantScreenState extends State<CashierAssistantScreen> {
     );
 
     if (result == true) {
-      await _loadAssistantContext();
+      await _loadAssistantContext(resetMessages: false);
       if (!mounted) return;
       setState(() {
         _messages = [

@@ -42,6 +42,60 @@ void main() {
     expect(reply.message, contains('PHP 42.00'));
   });
 
+  test('prepares direct sale when payment method and amount are included', () {
+    final reply = parser.answer('sell 2 coke cash 100', products);
+
+    expect(reply.intent, CashierAssistantIntent.createSale);
+    expect(reply.saleLines, hasLength(1));
+    expect(reply.canCompleteSale, isTrue);
+    expect(reply.canOpenCheckout, isFalse);
+    expect(reply.paymentMethod, 'cash');
+    expect(reply.paymentAmount, 100);
+    expect(reply.message, contains('change'));
+  });
+
+  test('keeps sale as draft when cashier asks for draft only', () {
+    final reply = parser.answer('draft only sell 2 coke cash 100', products);
+
+    expect(reply.intent, CashierAssistantIntent.createSale);
+    expect(reply.draftOnly, isTrue);
+    expect(reply.canCompleteSale, isFalse);
+    expect(reply.canOpenCheckout, isTrue);
+  });
+
+  test('rejects direct sale with insufficient payment', () {
+    final reply = parser.answer('sell 2 coke cash 10', products);
+
+    expect(reply.intent, CashierAssistantIntent.createSale);
+    expect(reply.canCompleteSale, isFalse);
+    expect(reply.message, contains('amount received is only'));
+  });
+
+  test('parses add stock command', () {
+    final reply = parser.answer('add stock 10 coke', products);
+
+    expect(reply.intent, CashierAssistantIntent.addStock);
+    expect(reply.stockAction?.product.name, contains('Coca-Cola'));
+    expect(reply.stockAction?.quantityToAdd, 10);
+  });
+
+  test('parses add expense command', () {
+    final reply =
+        parser.answer('add expense utilities 250 electricity bill', products);
+
+    expect(reply.intent, CashierAssistantIntent.addExpense);
+    expect(reply.expenseAction?.category, 'utilities');
+    expect(reply.expenseAction?.amount, 250);
+  });
+
+  test('parses report command', () {
+    final reply = parser.answer('generate inventory report today', products);
+
+    expect(reply.intent, CashierAssistantIntent.generateReport);
+    expect(reply.reportAction?.reportType, 'inventory');
+    expect(reply.reportAction?.period, 'Today');
+  });
+
   test('answers price checks with matched product', () {
     final reply = parser.answer('price coke', products);
 
