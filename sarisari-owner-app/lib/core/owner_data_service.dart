@@ -276,11 +276,14 @@ class OwnerDataService {
       apiClient.get('/summaries/store', queryParameters: {'period': 'week'}),
       apiClient.get('/summaries/products',
           queryParameters: {'period': 'all', 'limit': 50}),
+      apiClient.get('/summaries/expenses',
+          queryParameters: {'period': 'month', 'limit': 1}),
     ]);
 
     final todaySummary = _asMap(_asMap(results[0].data)['summary']);
     final weekSummary = _asMap(_asMap(results[1].data)['summary']);
     final productsPayload = _asMap(results[2].data);
+    final expenseTotals = _asMap(_asMap(results[3].data)['totals']);
     final products = _list(productsPayload['products']);
 
     return BusinessSnapshot(
@@ -288,11 +291,11 @@ class OwnerDataService {
       storeName: prefs.getString('owner_store') ?? 'My Store',
       todayRevenue: _num(todaySummary['total_revenue']).round(),
       todayProfit: _num(todaySummary['gross_profit']).round(),
-      todayExpenses: _num(todaySummary['total_expenses']).round(),
+      todayExpenses: _num(expenseTotals['today_total']).round(),
       todayTransactions: _int(todaySummary['transaction_count']),
       weeklyRevenue: _num(weekSummary['total_revenue']).round(),
       weeklyProfit: _num(weekSummary['gross_profit']).round(),
-      weeklyExpenses: _num(weekSummary['total_expenses']).round(),
+      weeklyExpenses: _num(expenseTotals['week_total']).round(),
       pendingOrders: 0,
       products: products.map((item) {
         final stock = _int(item['stock_on_hand']);
@@ -411,5 +414,4 @@ class OwnerDataService {
     if (parsed == null) return '';
     return DateFormat('MMM d').format(parsed.toLocal());
   }
-
 }

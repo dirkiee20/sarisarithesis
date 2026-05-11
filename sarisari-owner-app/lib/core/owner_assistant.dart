@@ -141,6 +141,15 @@ class BusinessSnapshot {
   }
 
   double get profitMargin => todayRevenue == 0 ? 0 : todayProfit / todayRevenue;
+  double get expenseRatio =>
+      todayRevenue == 0 ? 0 : todayExpenses / todayRevenue;
+  double get weeklyProfitMargin =>
+      weeklyRevenue == 0 ? 0 : weeklyProfit / weeklyRevenue;
+  double get weeklyExpenseRatio =>
+      weeklyRevenue == 0 ? 0 : weeklyExpenses / weeklyRevenue;
+  int get todayNetIncome => todayProfit - todayExpenses;
+  int get weeklyNetIncome => weeklyProfit - weeklyExpenses;
+  double get netMargin => todayRevenue == 0 ? 0 : todayNetIncome / todayRevenue;
 
   List<ProductStock> get lowStockProducts =>
       products.where((product) => product.isLowStock).toList();
@@ -154,8 +163,14 @@ class BusinessSnapshot {
       ];
 
   String get healthLabel {
-    if (todayRevenue <= 0 || profitMargin < 0.2) {
+    if (todayRevenue <= 0) {
       return 'needs attention';
+    }
+    if (todayNetIncome < 0 || expenseRatio > 0.45 || netMargin < 0.1) {
+      return 'needs attention';
+    }
+    if (profitMargin < 0.2 || expenseRatio > 0.3 || netMargin < 0.18) {
+      return 'stable, but margins are tight';
     }
     if (restockProducts.length >= 4) {
       return 'steady, with inventory warnings';
@@ -197,9 +212,11 @@ class OwnerAssistant {
       message: '${_timeGreeting()}, ${snapshot.ownerName}. '
           '${snapshot.storeName} is ${snapshot.healthLabel} today. '
           'You have ${_money(snapshot.todayRevenue)} in revenue, '
-          '${_money(snapshot.todayProfit)} profit, and '
+          '${_money(snapshot.todayProfit)} gross profit, '
+          '${_money(snapshot.todayExpenses)} expenses, and '
+          '${_money(snapshot.todayNetIncome)} net income after expenses. '
           '${snapshot.todayTransactions} transactions. '
-          '${_inventoryWatch(snapshot)}',
+          '${_healthAdvice(snapshot)} ${_inventoryWatch(snapshot)}',
     );
   }
 
@@ -211,10 +228,7 @@ class OwnerAssistant {
       case AssistantIntent.businessHealth:
         return AssistantReply(
           intent: intent,
-          message: '${snapshot.storeName} is ${snapshot.healthLabel}. '
-              'Today revenue is ${_money(snapshot.todayRevenue)}, '
-              'profit is ${_money(snapshot.todayProfit)}, and expenses are '
-              '${_money(snapshot.todayExpenses)}. ${_inventoryWatch(snapshot)}',
+          message: _businessHealth(snapshot),
         );
       case AssistantIntent.salesToday:
         return AssistantReply(
@@ -226,16 +240,21 @@ class OwnerAssistant {
       case AssistantIntent.profit:
         return AssistantReply(
           intent: intent,
-          message: 'Today profit is ${_money(snapshot.todayProfit)}. '
-              'That is about ${(snapshot.profitMargin * 100).round()}% of '
-              'today revenue, which is a healthy margin for the store.',
+          message: 'Today gross profit is ${_money(snapshot.todayProfit)} '
+              '(${_percent(snapshot.profitMargin)} gross margin). After '
+              '${_money(snapshot.todayExpenses)} expenses, estimated net income '
+              'is ${_money(snapshot.todayNetIncome)} '
+              '(${_percent(snapshot.netMargin)} net margin). '
+              '${_healthAdvice(snapshot)}',
         );
       case AssistantIntent.expenses:
         return AssistantReply(
           intent: intent,
-          message: 'Today expenses are ${_money(snapshot.todayExpenses)}. '
+          message: 'Today expenses are ${_money(snapshot.todayExpenses)}, '
+              'about ${_percent(snapshot.expenseRatio)} of today revenue. '
               'This week expenses are ${_money(snapshot.weeklyExpenses)}, '
-              'mostly from restocking and utilities.',
+              'about ${_percent(snapshot.weeklyExpenseRatio)} of weekly '
+              'revenue. ${_expenseAdvice(snapshot)}',
         );
       case AssistantIntent.lowStock:
         return AssistantReply(
@@ -395,6 +414,58 @@ class OwnerAssistant {
     return 'Top products today: $products.';
   }
 
+  String _businessHealth(BusinessSnapshot snapshot) {
+    return '${snapshot.storeName} is ${snapshot.healthLabel}. '
+        'Revenue today is ${_money(snapshot.todayRevenue)} with '
+        '${_money(snapshot.todayProfit)} gross profit '
+        '(${_percent(snapshot.profitMargin)} gross margin). Expenses are '
+        '${_money(snapshot.todayExpenses)} '
+        '(${_percent(snapshot.expenseRatio)} of revenue), leaving estimated '
+        'net income of ${_money(snapshot.todayNetIncome)} '
+        '(${_percent(snapshot.netMargin)} net margin). '
+        'This week, net income is ${_money(snapshot.weeklyNetIncome)} from '
+        '${_money(snapshot.weeklyRevenue)} revenue. '
+        '${_healthAdvice(snapshot)} ${_inventoryWatch(snapshot)}';
+  }
+
+  String _healthAdvice(BusinessSnapshot snapshot) {
+    if (snapshot.todayRevenue <= 0) {
+      return 'No revenue is synced yet, so business health cannot be fully evaluated.';
+    }
+    if (snapshot.todayNetIncome < 0) {
+      return 'Expenses are higher than gross profit today, so review large costs before restocking more.';
+    }
+    if (snapshot.expenseRatio > 0.45) {
+      return 'Expenses are taking a large share of sales; aim to keep daily expenses below 30% of revenue when possible.';
+    }
+    if (snapshot.netMargin < 0.1) {
+      return 'The store is earning, but net margin is thin. Check pricing and reduce non-urgent expenses.';
+    }
+    if (snapshot.profitMargin >= 0.3 && snapshot.expenseRatio <= 0.25) {
+      return 'Margins look good because profit is strong and expenses are controlled.';
+    }
+    return 'The store is operating okay, but keep watching expenses and product margins.';
+  }
+
+  String _expenseAdvice(BusinessSnapshot snapshot) {
+    if (snapshot.todayRevenue <= 0) {
+      return 'Once cashier sales are synced, I can compare expenses against revenue.';
+    }
+    if (snapshot.todayExpenses == 0) {
+      return 'No owner or cashier expenses are recorded today, so current net margin looks protected.';
+    }
+    if (snapshot.todayNetIncome < 0) {
+      return 'This is risky because expenses are bigger than gross profit today.';
+    }
+    if (snapshot.expenseRatio > 0.45) {
+      return 'That is high. Delay non-essential spending and check if restocking costs are too heavy.';
+    }
+    if (snapshot.expenseRatio > 0.3) {
+      return 'That is manageable but tight. Try to keep recurring costs lower tomorrow.';
+    }
+    return 'That looks controlled. Expenses are not eating too much of today sales.';
+  }
+
   String _inventoryWatch(BusinessSnapshot snapshot) {
     final count = snapshot.restockProducts.length;
     if (count == 0) {
@@ -430,12 +501,15 @@ class OwnerAssistant {
 
   String _money(int amount) => 'PHP ${_withCommas(amount)}';
 
+  String _percent(double value) => '${(value * 100).round()}%';
+
   String _withCommas(int value) {
-    final chars = value.toString().split('').reversed.toList();
+    final sign = value < 0 ? '-' : '';
+    final chars = value.abs().toString().split('').reversed.toList();
     final groups = <String>[];
     for (var i = 0; i < chars.length; i += 3) {
       groups.add(chars.skip(i).take(3).toList().reversed.join());
     }
-    return groups.reversed.join(',');
+    return '$sign${groups.reversed.join(',')}';
   }
 }

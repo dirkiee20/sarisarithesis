@@ -31,4 +31,36 @@ void main() {
     expect(reply.message, contains('Maria Store'));
     expect(reply.message, contains('pretty healthy'));
   });
+
+  test('health answer compares expenses against profit and margin', () {
+    const tightSnapshot = BusinessSnapshot(
+      ownerName: 'Maria',
+      storeName: 'Maria Store',
+      todayRevenue: 3000,
+      todayProfit: 1000,
+      todayExpenses: 1400,
+      todayTransactions: 20,
+      weeklyRevenue: 12000,
+      weeklyProfit: 4200,
+      weeklyExpenses: 5200,
+      pendingOrders: 0,
+      products: [],
+      topProducts: [],
+    );
+
+    final reply = assistant.answer('Is my business healthy?', tightSnapshot);
+
+    expect(reply.intent, AssistantIntent.businessHealth);
+    expect(reply.message, contains('needs attention'));
+    expect(reply.message, contains('net income'));
+    expect(reply.message, contains('Expenses are higher than gross profit'));
+  });
+
+  test('expense answer explains expense ratio', () {
+    final reply = assistant.answer('Are my expenses okay?', snapshot);
+
+    expect(reply.intent, AssistantIntent.expenses);
+    expect(reply.message, contains('of today revenue'));
+    expect(reply.message, contains('Expenses are not eating too much'));
+  });
 }
