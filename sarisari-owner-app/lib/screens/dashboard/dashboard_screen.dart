@@ -327,6 +327,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
 
+          // ── AI Insights ──────────────────────────────
+          if (_data?.aiInsights != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(4.w, 2.5.h, 4.w, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 20),
+                        const SizedBox(width: 8),
+                        const _SectionTitle('AI Forecast & Restock'),
+                      ],
+                    ),
+                    SizedBox(height: 1.5.h),
+                    _AiInsightsCard(insights: _data!.aiInsights!),
+                  ],
+                ),
+              ),
+            ),
+
           // ── Quick Actions ────────────────────────────
           SliverToBoxAdapter(
             child: Padding(
@@ -565,6 +587,147 @@ class _EmptyCard extends StatelessWidget {
       child: Text(
         message,
         style: GoogleFonts.inter(fontSize: 12, color: OwnerTheme.textMuted),
+      ),
+    );
+  }
+}
+
+class _AiInsightsCard extends StatelessWidget {
+  final Map<String, dynamic> insights;
+  const _AiInsightsCard({required this.insights});
+
+  String _money(num value) {
+    final text = value.round().toString();
+    final chars = text.split('').reversed.toList();
+    final groups = <String>[];
+    for (var i = 0; i < chars.length; i += 3) {
+      groups.add(chars.skip(i).take(3).toList().reversed.join());
+    }
+    return '₱${groups.reversed.join(',')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final forecast = insights['forecast']?['summary'] as Map<String, dynamic>?;
+    final restock = insights['restock'] as Map<String, dynamic>?;
+    final recommendations = restock?['recommendations'] as List<dynamic>? ?? [];
+
+    final predicted30d = forecast?['predictedRevenue30d'] ?? 0;
+    final delta30d = forecast?['deltaPercent30d'] ?? 0;
+    final isUp = (delta30d as num) >= 0;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFFF5F3FF),
+            Color(0xFFEDE9FE),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFDDD6FE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.all(4.w),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('30-Day Revenue Forecast',
+                        style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: const Color(0xFF6D28D9),
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(_money(predicted30d as num),
+                        style: GoogleFonts.inter(
+                            fontSize: 20,
+                            color: const Color(0xFF4C1D95),
+                            fontWeight: FontWeight.w800)),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isUp ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(isUp ? Icons.arrow_upward : Icons.arrow_downward,
+                          color: Colors.white, size: 12),
+                      const SizedBox(width: 4),
+                      Text('${(delta30d as num).abs().toStringAsFixed(1)}%',
+                          style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (recommendations.isNotEmpty) ...[
+            Container(height: 1, color: const Color(0xFFDDD6FE)),
+            Padding(
+              padding: EdgeInsets.all(4.w),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Smart Restock Recommendations',
+                      style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: const Color(0xFF6D28D9),
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  ...recommendations.take(3).map((item) {
+                    final isCritical = item['priority'] == 'critical';
+                    final qty = item['suggestedOrderQuantity'] ?? 0;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            isCritical ? Icons.warning_rounded : Icons.info_outline,
+                            color: isCritical ? const Color(0xFFEA580C) : const Color(0xFF8B5CF6),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: GoogleFonts.inter(
+                                    fontSize: 12, color: const Color(0xFF4C1D95)),
+                                children: [
+                                  TextSpan(
+                                      text: '${item['productName']}: ',
+                                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  TextSpan(text: 'Order $qty units '),
+                                  if (item['optimalRestockDate'] != null)
+                                    TextSpan(text: 'by ${item['optimalRestockDate']}'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

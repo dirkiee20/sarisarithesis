@@ -7,6 +7,7 @@ const {
   getDateRange: getSummaryDateRange,
   latestInventorySelect,
 } = require('../services/summary.service');
+const { getTenantAiInsights } = require('../services/ai-insights.service');
 
 const router = express.Router();
 router.use(authenticate);
@@ -307,6 +308,17 @@ router.get(
     );
 
     res.json({ dailyBreakdown: result.rows, days });
+  })
+);
+
+// ── GET /api/analytics/ai-insights ─────────────────────────────────────────
+// AI-powered forecasting and restock recommendations
+router.get(
+  '/ai-insights',
+  requireRole('owner', 'manager'),
+  asyncHandler(async (req, res) => {
+    const insights = await getTenantAiInsights(req.tenantId);
+    res.json(insights);
   })
 );
 

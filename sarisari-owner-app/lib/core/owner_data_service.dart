@@ -17,6 +17,7 @@ class OwnerDashboardData {
     required this.kpis,
     required this.weeklyTrend,
     required this.topProducts,
+    this.aiInsights,
   });
 
   final String ownerName;
@@ -29,6 +30,7 @@ class OwnerDashboardData {
   final List<Map<String, dynamic>> kpis;
   final List<Map<String, dynamic>> weeklyTrend;
   final List<Map<String, dynamic>> topProducts;
+  final Map<String, dynamic>? aiInsights;
 }
 
 class OwnerAnalyticsData {
@@ -95,6 +97,12 @@ class OwnerDataService {
     final week = _asMap(results[1].data);
     final topProductsPayload = _asMap(results[2].data);
     final todaySummary = _asMap(today['summary']);
+    
+    Map<String, dynamic>? aiInsights;
+    try {
+      final aiRes = await apiClient.get('/analytics/ai-insights');
+      aiInsights = _asMap(aiRes.data);
+    } catch (_) {}
 
     final revenue = _num(todaySummary['total_revenue']);
     final grossProfit = _num(todaySummary['gross_profit']);
@@ -139,6 +147,7 @@ class OwnerDataService {
       topProducts: _list(topProductsPayload['products'])
           .map(_productSummaryToTopProduct)
           .toList(),
+      aiInsights: aiInsights,
     );
   }
 
