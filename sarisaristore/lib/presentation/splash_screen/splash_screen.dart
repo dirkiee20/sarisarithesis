@@ -80,7 +80,7 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (token.isNotEmpty) {
-      unawaited(SummarySyncService().syncToday());
+      unawaited(SummarySyncService().syncToday(daysToSync: 7));
       // Already authenticated → go to main app
       Navigator.of(context).pushReplacementNamed(AppRoutes.productsTab);
     } else {

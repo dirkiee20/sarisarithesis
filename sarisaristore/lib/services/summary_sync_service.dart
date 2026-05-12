@@ -8,11 +8,24 @@ import '../data/database/database_helper.dart';
 class SummarySyncService {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
 
-  Future<bool> syncToday({bool throwOnError = false}) async {
+  /// Syncs the summaries for the last few days to ensure offline transactions are captured
+  Future<bool> syncToday({bool throwOnError = false, int daysToSync = 3}) async {
+    bool allSuccess = true;
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day);
-    final end = start.add(const Duration(days: 1));
-    return syncDateRange(start, end, throwOnError: throwOnError);
+    
+    // Sync today and the past (daysToSync - 1) days to catch any unsynced offline data
+    for (int i = 0; i < daysToSync; i++) {
+      final targetDate = now.subtract(Duration(days: i));
+      final start = DateTime(targetDate.year, targetDate.month, targetDate.day);
+      final end = start.add(const Duration(days: 1));
+      
+      final success = await syncDateRange(start, end, throwOnError: throwOnError);
+      if (!success) {
+        allSuccess = false;
+      }
+    }
+    
+    return allSuccess;
   }
 
   Future<bool> syncDateRange(
