@@ -1,6 +1,8 @@
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  'https://sarisarithesis-production.up.railway.app';
+const USE_API_PROXY = process.env.NEXT_PUBLIC_USE_API_PROXY !== 'false';
+const API_URL = USE_API_PROXY
+  ? ''
+  : process.env.NEXT_PUBLIC_API_URL ||
+    'https://sarisarithesis-production.up.railway.app';
 
 const getToken = () => {
   if (typeof window === 'undefined') return null;
