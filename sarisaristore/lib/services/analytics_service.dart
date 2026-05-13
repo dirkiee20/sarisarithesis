@@ -11,26 +11,25 @@ class AnalyticsService {
   /// Get date range for period
   Map<String, DateTime> _getDateRangeForPeriod(String period) {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     DateTime startDate;
-    DateTime endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final endDate = today.add(const Duration(days: 1));
 
-    switch (period) {
-      case 'Today':
-        startDate = DateTime(now.year, now.month, now.day, 0, 0, 0);
+    switch (period.toLowerCase()) {
+      case 'today':
+        startDate = today;
         break;
-      case 'Week':
-        startDate = now.subtract(Duration(days: now.weekday - 1));
-        startDate =
-            DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
+      case 'week':
+        startDate = today.subtract(Duration(days: today.weekday - 1));
         break;
-      case 'Month':
+      case 'month':
         startDate = DateTime(now.year, now.month, 1, 0, 0, 0);
         break;
-      case 'Year':
+      case 'year':
         startDate = DateTime(now.year, 1, 1, 0, 0, 0);
         break;
       default:
-        startDate = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        startDate = today;
     }
 
     return {'start': startDate, 'end': endDate};
@@ -54,8 +53,8 @@ class AnalyticsService {
     );
   }
 
-  /// Get expenses for period (cost of products ordered)
-  Future<double> getExpensesForPeriod(String period) async {
+  /// Get cost of goods sold for period.
+  Future<double> getProductCostsForPeriod(String period) async {
     final dateRange = _getDateRangeForPeriod(period);
 
     // Get all transactions for the period
@@ -78,7 +77,7 @@ class AnalyticsService {
     return totalCost;
   }
 
-  /// Get business expenses for period (additional expenses like rent, utilities, etc.)
+  /// Get business expenses for period (rent, utilities, supplies, wages, etc.)
   Future<double> getBusinessExpensesForPeriod(String period) async {
     final dateRange = _getDateRangeForPeriod(period);
     return await _expenseRepository.getTotalExpenses(
@@ -87,14 +86,16 @@ class AnalyticsService {
     );
   }
 
-  /// Get net income for period (includes both product costs and business expenses)
+  /// Get expenses for period.
+  Future<double> getExpensesForPeriod(String period) async {
+    return getBusinessExpensesForPeriod(period);
+  }
+
+  /// Get net income for period.
   Future<double> getNetIncomeForPeriod(String period) async {
     final profit = await getProfitForPeriod(period);
-    final productCosts =
-        await getExpensesForPeriod(period); // Cost of products sold
-    final businessExpenses = await getBusinessExpensesForPeriod(
-        period); // Additional business expenses
-    return profit - productCosts - businessExpenses;
+    final businessExpenses = await getBusinessExpensesForPeriod(period);
+    return profit - businessExpenses;
   }
 
   /// Get transaction count for period
@@ -146,16 +147,16 @@ class AnalyticsService {
 
   /// Get date key for grouping
   String _getDateKey(DateTime date, String period) {
-    switch (period) {
-      case 'Today':
+    switch (period.toLowerCase()) {
+      case 'today':
         return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-      case 'Week':
+      case 'week':
         final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         return days[date.weekday - 1];
-      case 'Month':
+      case 'month':
         final weekNumber = ((date.day - 1) ~/ 7) + 1;
         return 'Week $weekNumber';
-      case 'Year':
+      case 'year':
         final quarter = ((date.month - 1) ~/ 3) + 1;
         return 'Q$quarter';
       default:
@@ -196,35 +197,14 @@ class AnalyticsService {
     return topProducts.take(5).toList();
   }
 
-  /// Get expenses grouped by category for period (product costs by category)
+  /// Get expenses grouped by category for period
   Future<Map<String, double>> getExpensesByCategoryForPeriod(
       String period) async {
     final dateRange = _getDateRangeForPeriod(period);
-
-    // Get all transactions for the period
-    final transactions =
-        await _transactionRepository.getTransactionsByDateRange(
+    return await _expenseRepository.getExpensesByCategoryGrouped(
       dateRange['start']!,
       dateRange['end']!,
     );
-
-    // Group costs by product category
-    final Map<String, double> categoryCosts = {};
-    for (final transaction in transactions) {
-      final items =
-          await _transactionRepository.getTransactionItems(transaction.id!);
-      for (final item in items) {
-        // Get product to determine category
-        final product = await _productRepository.getProductById(item.productId);
-        if (product != null) {
-          final category = product.category;
-          final cost = item.costPrice * item.quantity;
-          categoryCosts[category] = (categoryCosts[category] ?? 0) + cost;
-        }
-      }
-    }
-
-    return categoryCosts;
   }
 
   /// Get low stock products count

@@ -48,7 +48,7 @@ class ExpenseDao {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'expenses',
-      where: 'expense_date >= ? AND expense_date <= ?',
+      where: 'expense_date >= ? AND expense_date < ?',
       whereArgs: [
         startDate.toIso8601String(),
         endDate.toIso8601String(),
@@ -82,7 +82,7 @@ class ExpenseDao {
     final result = await db.rawQuery('''
       SELECT SUM(amount) as total
       FROM expenses
-      WHERE expense_date >= ? AND expense_date <= ?
+      WHERE expense_date >= ? AND expense_date < ?
     ''', [
       startDate.toIso8601String(),
       endDate.toIso8601String(),
@@ -100,7 +100,7 @@ class ExpenseDao {
     final List<Map<String, dynamic>> maps = await db.rawQuery('''
       SELECT category, SUM(amount) as total
       FROM expenses
-      WHERE expense_date >= ? AND expense_date <= ?
+      WHERE expense_date >= ? AND expense_date < ?
       GROUP BY category
       ORDER BY total DESC
     ''', [
@@ -136,4 +136,3 @@ class ExpenseDao {
     );
   }
 }
-

@@ -15,7 +15,7 @@ class AnalyticsScreen extends StatefulWidget {
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   final _dataService = const OwnerDataService();
-  String _period = 'Week';
+  String _period = 'Today';
   final _periods = ['Today', 'Week', 'Month', 'Year'];
   OwnerAnalyticsData? _data;
   bool _loading = true;
@@ -65,6 +65,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   List<Map<String, dynamic>> get _topProducts => _data?.topProducts ?? const [];
+
+  String _trendLabel(int index) {
+    final trend = _data?.trend ?? const [];
+    if (index < 0 || index >= trend.length) return '';
+    return trend[index]['label']?.toString() ?? '';
+  }
 
   double get _topProductMax {
     final values = _topProducts
@@ -253,12 +259,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       sideTitles: SideTitles(
                         showTitles: true,
                         getTitlesWidget: (v, _) {
-                          const d = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
                           final i = v.toInt();
-                          if (i < 0 || i >= d.length) {
+                          final label = _trendLabel(i);
+                          if (label.isEmpty) {
                             return const SizedBox.shrink();
                           }
-                          return Text(d[i],
+                          return Text(label,
                               style: GoogleFonts.inter(
                                   fontSize: 10, color: OwnerTheme.textMuted));
                         },
@@ -301,7 +307,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               title: 'Top Products',
               subtitle: 'By revenue',
               child: Column(
-                                children: _topProducts.isEmpty
+                children: _topProducts.isEmpty
                     ? [
                         _InlineEmpty(
                             message:
@@ -330,8 +336,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                   child: LinearProgressIndicator(
                                     value: pct,
                                     minHeight: 8,
-                                    backgroundColor:
-                                        OwnerTheme.surfaceVariant,
+                                    backgroundColor: OwnerTheme.surfaceVariant,
                                     valueColor: AlwaysStoppedAnimation(
                                         OwnerTheme.primary),
                                   ),
@@ -364,48 +369,49 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 'No expense summaries have been synced yet.')
                       ]
                     : _expenseCategories
-                    .map((cat) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: cat['color'] as Color,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                  child: Text(cat['name'] as String,
-                                      style: GoogleFonts.inter(
-                                          fontSize: 13,
-                                          color: OwnerTheme.textPrimary))),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(99),
-                                child: SizedBox(
-                                  width: 20.w,
-                                  child: LinearProgressIndicator(
-                                    value: cat['pct'] as double,
-                                    minHeight: 6,
-                                    backgroundColor: OwnerTheme.surfaceVariant,
-                                    valueColor: AlwaysStoppedAnimation(
-                                        cat['color'] as Color),
+                        .map((cat) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: cat['color'] as Color,
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                      child: Text(cat['name'] as String,
+                                          style: GoogleFonts.inter(
+                                              fontSize: 13,
+                                              color: OwnerTheme.textPrimary))),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(99),
+                                    child: SizedBox(
+                                      width: 20.w,
+                                      child: LinearProgressIndicator(
+                                        value: cat['pct'] as double,
+                                        minHeight: 6,
+                                        backgroundColor:
+                                            OwnerTheme.surfaceVariant,
+                                        valueColor: AlwaysStoppedAnimation(
+                                            cat['color'] as Color),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                      '${((cat['pct'] as double) * 100).toStringAsFixed(0)}%',
+                                      style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: OwnerTheme.textSecondary)),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                  '${((cat['pct'] as double) * 100).toStringAsFixed(0)}%',
-                                  style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: OwnerTheme.textSecondary)),
-                            ],
-                          ),
-                        ))
-                    .toList(),
+                            ))
+                        .toList(),
               ),
             ),
 
@@ -516,5 +522,3 @@ class _InlineEmpty extends StatelessWidget {
     );
   }
 }
-
-

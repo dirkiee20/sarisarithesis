@@ -12,6 +12,11 @@ const {
 const router = express.Router();
 router.use(authenticate);
 
+function toDateKey(value) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
 router.post(
   '/cashier',
   requireRole('owner', 'manager', 'staff', 'cashier'),
@@ -221,7 +226,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const { startDate, endDate } = getDateRange(req.query);
 
-    const [totalsResult, dailyResult, latestInventoryResult] = await Promise.all([
+    const [
+      totalsResult,
+      dailyResult,
+      manualTotalsResult,
+      manualDailyResult,
+      latestInventoryResult,
+    ] = await Promise.all([
       pool.query(
         `${SUMMARY_TOTALS_SQL}
          FROM cashier_daily_summaries
@@ -236,11 +247,32 @@ router.get(
            COALESCE(SUM(net_revenue), 0)::float AS revenue,
            COALESCE(SUM(gross_profit), 0)::float AS gross_profit,
            COALESCE(SUM(expense_total), 0)::float AS expenses,
+           COALESCE(SUM(expense_count), 0)::int AS expense_count,
            MAX(received_at) AS latest_summary_at
          FROM cashier_daily_summaries
          WHERE tenant_id = $1 AND summary_date BETWEEN $2 AND $3
          GROUP BY summary_date
          ORDER BY summary_date ASC`,
+        [req.tenantId, startDate, endDate]
+      ),
+      pool.query(
+        `SELECT
+           COALESCE(SUM(amount), 0)::float AS total_expenses,
+           COUNT(*)::int AS expense_count
+         FROM expenses
+         WHERE tenant_id = $1 AND expense_date::date BETWEEN $2 AND $3`,
+        [req.tenantId, startDate, endDate]
+      ),
+      pool.query(
+        `SELECT
+           expense_date::date AS date,
+           COALESCE(SUM(amount), 0)::float AS expenses,
+           COUNT(*)::int AS expense_count,
+           MAX(created_at) AS latest_summary_at
+         FROM expenses
+         WHERE tenant_id = $1 AND expense_date::date BETWEEN $2 AND $3
+         GROUP BY expense_date::date
+         ORDER BY date ASC`,
         [req.tenantId, startDate, endDate]
       ),
       pool.query(
@@ -258,16 +290,70 @@ router.get(
     ]);
 
     const totals = totalsResult.rows[0];
+    const manualTotals = manualTotalsResult.rows[0] || {};
+    const totalExpenses =
+      Number(totals.total_expenses || 0) +
+      Number(manualTotals.total_expenses || 0);
+    const expenseCount =
+      Number(totals.expense_count || 0) +
+      Number(manualTotals.expense_count || 0);
     const inventory = latestInventoryResult.rows[0] || {};
+    const dailyByDate = new Map(
+      dailyResult.rows.map((row) => [
+        toDateKey(row.date),
+        {
+          ...row,
+          date: toDateKey(row.date),
+          expenses: Number(row.expenses || 0),
+          expense_count: Number(row.expense_count || 0),
+        },
+      ])
+    );
+
+    for (const row of manualDailyResult.rows) {
+      const date = toDateKey(row.date);
+      const existing = dailyByDate.get(date) || {
+        date,
+        transaction_count: 0,
+        items_sold_count: 0,
+        revenue: 0,
+        gross_profit: 0,
+        expenses: 0,
+        latest_summary_at: null,
+      };
+      const manualLatest = row.latest_summary_at
+        ? new Date(row.latest_summary_at)
+        : null;
+      const existingLatest = existing.latest_summary_at
+        ? new Date(existing.latest_summary_at)
+        : null;
+
+      dailyByDate.set(date, {
+        ...existing,
+        expenses:
+          Number(existing.expenses || 0) + Number(row.expenses || 0),
+        expense_count:
+          Number(existing.expense_count || 0) +
+          Number(row.expense_count || 0),
+        latest_summary_at:
+          manualLatest && (!existingLatest || manualLatest > existingLatest)
+            ? row.latest_summary_at
+            : existing.latest_summary_at,
+      });
+    }
 
     res.json({
       period: { startDate, endDate },
       summary: {
         ...totals,
-        net_income: Number(totals.gross_profit || 0) - Number(totals.total_expenses || 0),
+        total_expenses: totalExpenses,
+        expense_count: expenseCount,
+        net_income: Number(totals.gross_profit || 0) - totalExpenses,
         inventory,
       },
-      daily: dailyResult.rows,
+      daily: [...dailyByDate.values()].sort((left, right) =>
+        String(left.date).localeCompare(String(right.date))
+      ),
     });
   })
 );
@@ -310,37 +396,64 @@ router.get(
   asyncHandler(async (req, res) => {
     const { startDate, endDate } = getDateRange(req.query);
     const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+    const todayDate = req.query.todayDate ? toDateKey(req.query.todayDate) : null;
+    const weekStartDate = req.query.weekStartDate
+      ? toDateKey(req.query.weekStartDate)
+      : null;
+    const monthStartDate = req.query.monthStartDate
+      ? toDateKey(req.query.monthStartDate)
+      : null;
 
     const [summaryTotalsResult, manualTotalsResult, expensesResult] = await Promise.all([
       pool.query(
         `SELECT
-           COALESCE(SUM(CASE WHEN summary_date = CURRENT_DATE THEN expense_total ELSE 0 END), 0)::float AS today_total,
            COALESCE(SUM(CASE
-             WHEN summary_date >= (CURRENT_DATE - ((EXTRACT(ISODOW FROM CURRENT_DATE)::int - 1) * INTERVAL '1 day'))::date
+             WHEN summary_date = COALESCE($2::date, CURRENT_DATE)
+             THEN expense_total ELSE 0
+           END), 0)::float AS today_total,
+           COALESCE(SUM(CASE
+             WHEN summary_date BETWEEN
+               COALESCE(
+                 $3::date,
+                 (CURRENT_DATE - ((EXTRACT(ISODOW FROM CURRENT_DATE)::int - 1) * INTERVAL '1 day'))::date
+               )
+               AND COALESCE($2::date, CURRENT_DATE)
              THEN expense_total ELSE 0
            END), 0)::float AS week_total,
            COALESCE(SUM(CASE
-             WHEN summary_date >= DATE_TRUNC('month', CURRENT_DATE)::date
+             WHEN summary_date BETWEEN
+               COALESCE($4::date, DATE_TRUNC('month', COALESCE($2::date, CURRENT_DATE))::date)
+               AND COALESCE($2::date, CURRENT_DATE)
              THEN expense_total ELSE 0
            END), 0)::float AS month_total
          FROM cashier_daily_summaries
          WHERE tenant_id = $1`,
-        [req.tenantId]
+        [req.tenantId, todayDate, weekStartDate, monthStartDate]
       ),
       pool.query(
         `SELECT
-           COALESCE(SUM(CASE WHEN expense_date::date = CURRENT_DATE THEN amount ELSE 0 END), 0)::float AS today_total,
            COALESCE(SUM(CASE
-             WHEN expense_date::date >= (CURRENT_DATE - ((EXTRACT(ISODOW FROM CURRENT_DATE)::int - 1) * INTERVAL '1 day'))::date
+             WHEN expense_date::date = COALESCE($2::date, CURRENT_DATE)
+             THEN amount ELSE 0
+           END), 0)::float AS today_total,
+           COALESCE(SUM(CASE
+             WHEN expense_date::date BETWEEN
+               COALESCE(
+                 $3::date,
+                 (CURRENT_DATE - ((EXTRACT(ISODOW FROM CURRENT_DATE)::int - 1) * INTERVAL '1 day'))::date
+               )
+               AND COALESCE($2::date, CURRENT_DATE)
              THEN amount ELSE 0
            END), 0)::float AS week_total,
            COALESCE(SUM(CASE
-             WHEN expense_date::date >= DATE_TRUNC('month', CURRENT_DATE)::date
+             WHEN expense_date::date BETWEEN
+               COALESCE($4::date, DATE_TRUNC('month', COALESCE($2::date, CURRENT_DATE))::date)
+               AND COALESCE($2::date, CURRENT_DATE)
              THEN amount ELSE 0
            END), 0)::float AS month_total
          FROM expenses
          WHERE tenant_id = $1`,
-        [req.tenantId]
+        [req.tenantId, todayDate, weekStartDate, monthStartDate]
       ),
       pool.query(
         `WITH expense_rows AS (

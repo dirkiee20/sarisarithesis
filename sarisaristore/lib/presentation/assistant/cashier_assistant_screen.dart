@@ -231,7 +231,8 @@ class _CashierAssistantScreenState extends State<CashierAssistantScreen> {
     final period = action.period;
     final revenue = await _analyticsService.getRevenueForPeriod(period);
     final profit = await _analyticsService.getProfitForPeriod(period);
-    final productCosts = await _analyticsService.getExpensesForPeriod(period);
+    final productCosts =
+        await _analyticsService.getProductCostsForPeriod(period);
     final businessExpenses =
         await _analyticsService.getBusinessExpensesForPeriod(period);
     final transactionCount =
@@ -276,7 +277,7 @@ class _CashierAssistantScreenState extends State<CashierAssistantScreen> {
         ..writeln('')
         ..writeln('Expense categories');
       if (categories.isEmpty) {
-        buffer.writeln('- No product cost categories found.');
+        buffer.writeln('- No business expenses found.');
       } else {
         for (final entry in categories.entries) {
           buffer.writeln('- ${entry.key}: ${_money(entry.value)}');

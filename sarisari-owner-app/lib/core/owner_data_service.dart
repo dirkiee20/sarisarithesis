@@ -86,18 +86,22 @@ class OwnerDataService {
 
   Future<OwnerDashboardData> loadDashboard() async {
     final prefs = await SharedPreferences.getInstance();
+    final todayParams = _periodDateParams('today');
+    final weekParams = _periodDateParams('week');
     final results = await Future.wait<Response<dynamic>>([
-      apiClient.get('/summaries/store', queryParameters: {'period': 'today'}),
-      apiClient.get('/summaries/store', queryParameters: {'period': 'week'}),
+      apiClient.get('/summaries/store',
+          queryParameters: {'period': 'today', ...todayParams}),
+      apiClient.get('/summaries/store',
+          queryParameters: {'period': 'week', ...weekParams}),
       apiClient.get('/summaries/products',
-          queryParameters: {'period': 'today', 'limit': 4}),
+          queryParameters: {'period': 'today', ...todayParams, 'limit': 4}),
     ]);
 
     final today = _asMap(results[0].data);
     final week = _asMap(results[1].data);
     final topProductsPayload = _asMap(results[2].data);
     final todaySummary = _asMap(today['summary']);
-    
+
     Map<String, dynamic>? aiInsights;
     try {
       final aiRes = await apiClient.get('/analytics/ai-insights');
@@ -153,15 +157,16 @@ class OwnerDataService {
 
   Future<OwnerAnalyticsData> loadAnalytics(String period) async {
     final periodKey = period.toLowerCase();
+    final periodParams = _periodDateParams(periodKey);
     final results = await Future.wait<Response<dynamic>>([
-      apiClient
-          .get('/analytics/overview', queryParameters: {'period': periodKey}),
+      apiClient.get('/analytics/overview',
+          queryParameters: {'period': periodKey, ...periodParams}),
       apiClient.get('/analytics/sales-trend',
-          queryParameters: {'period': periodKey}),
+          queryParameters: {'period': periodKey, ...periodParams}),
       apiClient.get('/analytics/top-products',
-          queryParameters: {'period': periodKey, 'limit': 5}),
+          queryParameters: {'period': periodKey, ...periodParams, 'limit': 5}),
       apiClient.get('/analytics/expenses-by-category',
-          queryParameters: {'period': periodKey}),
+          queryParameters: {'period': periodKey, ...periodParams}),
     ]);
 
     final overview = _asMap(results[0].data);
@@ -205,9 +210,19 @@ class OwnerDataService {
   }
 
   Future<OwnerExpensesData> loadExpenses() async {
+    final todayParams = _periodDateParams('today');
+    final weekParams = _periodDateParams('week');
+    final monthParams = _periodDateParams('month');
     final response = await apiClient.get(
       '/summaries/expenses',
-      queryParameters: {'period': 'month', 'limit': 50},
+      queryParameters: {
+        'period': 'month',
+        ...monthParams,
+        'todayDate': todayParams['endDate'],
+        'weekStartDate': weekParams['startDate'],
+        'monthStartDate': monthParams['startDate'],
+        'limit': 50,
+      },
     );
 
     final payload = _asMap(response.data);
@@ -235,7 +250,8 @@ class OwnerDataService {
   Future<OwnerStaffData> loadStaff() async {
     final results = await Future.wait<Response<dynamic>>([
       apiClient.get('/users'),
-      apiClient.get('/summaries/cashiers', queryParameters: {'period': 'week'}),
+      apiClient.get('/summaries/cashiers',
+          queryParameters: {'period': 'week', ..._periodDateParams('week')}),
     ]);
 
     final usersPayload = _asMap(results[0].data);
@@ -280,13 +296,18 @@ class OwnerDataService {
 
   Future<BusinessSnapshot> loadAssistantSnapshot() async {
     final prefs = await SharedPreferences.getInstance();
+    final todayParams = _periodDateParams('today');
+    final weekParams = _periodDateParams('week');
+    final monthParams = _periodDateParams('month');
     final results = await Future.wait<Response<dynamic>>([
-      apiClient.get('/summaries/store', queryParameters: {'period': 'today'}),
-      apiClient.get('/summaries/store', queryParameters: {'period': 'week'}),
+      apiClient.get('/summaries/store',
+          queryParameters: {'period': 'today', ...todayParams}),
+      apiClient.get('/summaries/store',
+          queryParameters: {'period': 'week', ...weekParams}),
       apiClient.get('/summaries/products',
           queryParameters: {'period': 'all', 'limit': 50}),
       apiClient.get('/summaries/expenses',
-          queryParameters: {'period': 'month', 'limit': 1}),
+          queryParameters: {'period': 'month', ...monthParams, 'limit': 1}),
     ]);
 
     final todaySummary = _asMap(_asMap(results[0].data)['summary']);
@@ -325,6 +346,35 @@ class OwnerDataService {
         );
       }).toList(),
     );
+  }
+
+  Map<String, String> _periodDateParams(String period) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    late final DateTime start;
+
+    switch (period.toLowerCase()) {
+      case 'week':
+        start = today.subtract(Duration(days: today.weekday - 1));
+        break;
+      case 'month':
+        start = DateTime(today.year, today.month);
+        break;
+      case 'year':
+        start = DateTime(today.year);
+        break;
+      case 'all':
+        return const {};
+      case 'today':
+      default:
+        start = today;
+        break;
+    }
+
+    return {
+      'startDate': _dateOnly(start),
+      'endDate': _dateOnly(today),
+    };
   }
 
   Map<String, dynamic> _productSummaryToTopProduct(dynamic item) {
@@ -422,5 +472,11 @@ class OwnerDataService {
     final parsed = DateTime.tryParse(value?.toString() ?? '');
     if (parsed == null) return '';
     return DateFormat('MMM d').format(parsed.toLocal());
+  }
+
+  static String _dateOnly(DateTime date) {
+    return '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
   }
 }

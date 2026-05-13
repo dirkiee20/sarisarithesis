@@ -13,7 +13,7 @@ class TransactionDao {
     List<TransactionItemModel> items,
   ) async {
     final db = await _dbHelper.database;
-    
+
     // Use transaction for atomicity
     return await db.transaction((txn) async {
       // Insert transaction
@@ -68,7 +68,7 @@ class TransactionDao {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'transactions',
-      where: 'transaction_date >= ? AND transaction_date <= ?',
+      where: 'transaction_date >= ? AND transaction_date < ?',
       whereArgs: [
         startDate.toIso8601String(),
         endDate.toIso8601String(),
@@ -82,7 +82,8 @@ class TransactionDao {
   }
 
   /// Get transaction items by transaction ID
-  Future<List<TransactionItemModel>> getTransactionItems(int transactionId) async {
+  Future<List<TransactionItemModel>> getTransactionItems(
+      int transactionId) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'transaction_items',
@@ -102,7 +103,7 @@ class TransactionDao {
     final result = await db.rawQuery('''
       SELECT SUM(total_amount) as total
       FROM transactions
-      WHERE transaction_date >= ? AND transaction_date <= ?
+      WHERE transaction_date >= ? AND transaction_date < ?
     ''', [
       startDate.toIso8601String(),
       endDate.toIso8601String(),
@@ -117,7 +118,7 @@ class TransactionDao {
     final result = await db.rawQuery('''
       SELECT SUM(total_profit) as total
       FROM transactions
-      WHERE transaction_date >= ? AND transaction_date <= ?
+      WHERE transaction_date >= ? AND transaction_date < ?
     ''', [
       startDate.toIso8601String(),
       endDate.toIso8601String(),
@@ -132,7 +133,7 @@ class TransactionDao {
     final result = await db.rawQuery('''
       SELECT COUNT(*) as count
       FROM transactions
-      WHERE transaction_date >= ? AND transaction_date <= ?
+      WHERE transaction_date >= ? AND transaction_date < ?
     ''', [
       startDate.toIso8601String(),
       endDate.toIso8601String(),
@@ -151,4 +152,3 @@ class TransactionDao {
     );
   }
 }
-

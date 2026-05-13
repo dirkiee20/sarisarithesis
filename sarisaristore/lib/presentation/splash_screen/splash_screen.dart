@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
 import '../../services/summary_sync_service.dart';
+import '../../services/seeder_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -80,6 +81,7 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (token.isNotEmpty) {
+      await SeederService().seedCashierData();
       unawaited(SummarySyncService().syncToday(daysToSync: 7));
       // Already authenticated → go to main app
       Navigator.of(context).pushReplacementNamed(AppRoutes.productsTab);

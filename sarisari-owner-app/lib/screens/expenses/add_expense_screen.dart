@@ -139,22 +139,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     try {
       final amount = double.parse(_amountCtrl.text.replaceAll(',', '').trim());
-      await apiClient.post('/summaries/cashier', data: {
-        'summaryDate': DateFormat('yyyy-MM-dd').format(_expenseDate),
-        'expenseTotal': amount,
-        'expenseCount': 1,
-        'expenses': {
-          'byCategory': {
-            _category: amount,
-          },
-        },
-        'metadata': {
-          'source': 'owner_expense_page',
-          'title': _titleCtrl.text.trim(),
-          'description': _descriptionCtrl.text.trim().isEmpty
-              ? null
-              : _descriptionCtrl.text.trim(),
-        },
+      final description = _descriptionCtrl.text.trim();
+
+      await apiClient.post('/expenses', data: {
+        'title': _titleCtrl.text.trim(),
+        'description': description.isEmpty ? null : description,
+        'amount': amount,
+        'category': _category,
+        'expenseDate': DateFormat('yyyy-MM-dd').format(_expenseDate),
       });
 
       if (!mounted) return;

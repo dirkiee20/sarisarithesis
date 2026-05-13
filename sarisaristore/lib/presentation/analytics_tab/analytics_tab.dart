@@ -8,6 +8,7 @@ import '../../widgets/custom_icon_widget.dart';
 import '../../services/analytics_service.dart';
 import '../../services/file_service.dart';
 import '../../services/product_service.dart';
+import '../../services/summary_sync_service.dart';
 import './widgets/expense_widget.dart';
 import './widgets/insights_card_widget.dart';
 import './widgets/metric_card_widget.dart';
@@ -29,6 +30,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   String _selectedPeriod = 'Today';
   final List<String> _periods = ['Today', 'Week', 'Month', 'Year'];
   final AnalyticsService _analyticsService = AnalyticsService();
+  final SummarySyncService _summarySyncService = SummarySyncService();
   bool _isLoading = true;
 
   // Real data
@@ -52,26 +54,28 @@ class _AnalyticsTabState extends State<AnalyticsTab>
 
     try {
       await _loadRealAnalyticsData();
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
     } catch (e) {
       // Show error message
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load analytics data: $e'),
-            backgroundColor: const Color(0xFFE74C3C),
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load analytics data: $e'),
+          backgroundColor: const Color(0xFFE74C3C),
+        ),
+      );
     }
   }
 
   Future<void> _loadRealAnalyticsData() async {
+    await _summarySyncService.syncToday(daysToSync: _syncDaysForPeriod());
+
     final revenue =
         await _analyticsService.getRevenueForPeriod(_selectedPeriod);
     final profit = await _analyticsService.getProfitForPeriod(_selectedPeriod);
@@ -94,10 +98,11 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     final paymentMethodAmounts = await _analyticsService
         .getPaymentMethodAmountsForPeriod(_selectedPeriod);
 
+    if (!mounted) return;
     setState(() {
       _metrics = [
         {
-          "title": "Today's Revenue",
+          "title": "Revenue",
           "value": "₱${revenue.toStringAsFixed(2)}",
           "subtitle": "From $transactionCount transactions",
           "changePercentage": 0.0, // Would need previous period comparison
@@ -161,6 +166,21 @@ class _AnalyticsTabState extends State<AnalyticsTab>
         },
       ];
     });
+  }
+
+  int _syncDaysForPeriod() {
+    final now = DateTime.now();
+    switch (_selectedPeriod) {
+      case 'Week':
+        return now.weekday;
+      case 'Month':
+        return now.day;
+      case 'Year':
+        return 31;
+      case 'Today':
+      default:
+        return 1;
+    }
   }
 
   @override
@@ -368,7 +388,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     setState(() {
       _selectedPeriod = period;
     });
-    _loadRealAnalyticsData();
+    _loadAnalyticsData();
   }
 
   Future<void> _refreshAnalytics() async {

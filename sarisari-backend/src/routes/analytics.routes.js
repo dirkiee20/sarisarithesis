@@ -49,7 +49,8 @@ router.get(
     const { period = 'today' } = req.query;
     const { startDate, endDate } = getSummaryDateRange(req.query);
 
-    const [summaryResult, latestInventoryResult] = await Promise.all([
+    const [summaryResult, latestInventoryResult, manualExpensesResult] =
+      await Promise.all([
       pool.query(
         `${SUMMARY_TOTALS_SQL}
          FROM cashier_daily_summaries
@@ -65,13 +66,21 @@ router.get(
          LIMIT 1`,
         [req.tenantId]
       ),
+      pool.query(
+        `SELECT COALESCE(SUM(amount), 0)::float AS total_expenses
+         FROM expenses
+         WHERE tenant_id = $1 AND expense_date::date BETWEEN $2 AND $3`,
+        [req.tenantId, startDate, endDate]
+      ),
     ]);
 
     const summary = summaryResult.rows[0];
     const inventory = latestInventoryResult.rows[0] || {};
     const revenue = Number(summary.total_revenue || 0);
     const grossProfit = Number(summary.gross_profit || 0);
-    const businessExpenses = Number(summary.total_expenses || 0);
+    const businessExpenses =
+      Number(summary.total_expenses || 0) +
+      Number(manualExpensesResult.rows[0]?.total_expenses || 0);
     const netProfit = grossProfit - businessExpenses;
     const profitMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
@@ -206,42 +215,51 @@ router.get(
     const { startDate, endDate } = getSummaryDateRange(req.query);
 
     const result = await pool.query(
-      `SELECT
-         category,
-         SUM(total)::float AS total,
-         COUNT(*)::int AS count
-       FROM (
+      `WITH expense_rows AS (
          SELECT
            entry.key AS category,
-           COALESCE(NULLIF(entry.value, '')::numeric, 0) AS total
+           COALESCE(NULLIF(entry.value, '')::numeric, 0) AS total,
+           1::int AS count
          FROM cashier_daily_summaries summaries
          CROSS JOIN LATERAL jsonb_each_text(summaries.expense_breakdown) entry
          WHERE summaries.tenant_id = $1
            AND summaries.summary_date BETWEEN $2 AND $3
-       ) expense_rows
+
+         UNION ALL
+
+         SELECT
+           'General' AS category,
+           expense_total::numeric AS total,
+           GREATEST(expense_count, 1)::int AS count
+         FROM cashier_daily_summaries
+         WHERE tenant_id = $1
+           AND summary_date BETWEEN $2 AND $3
+           AND expense_total > 0
+           AND expense_breakdown = '{}'::jsonb
+
+         UNION ALL
+
+         SELECT
+           COALESCE(NULLIF(category, ''), 'General') AS category,
+           amount::numeric AS total,
+           1::int AS count
+         FROM expenses
+         WHERE tenant_id = $1
+           AND expense_date::date BETWEEN $2 AND $3
+       )
+       SELECT
+         category,
+         COALESCE(SUM(total), 0)::float AS total,
+         COALESCE(SUM(count), 0)::int AS count
+       FROM expense_rows
+       WHERE total > 0
        GROUP BY category
        ORDER BY total DESC`,
       [req.tenantId, startDate, endDate]
     );
 
-    if (result.rows.length > 0) {
-      return res.json({ expensesByCategory: result.rows, period });
-    }
-
-    const fallback = await pool.query(
-      `SELECT
-         'General' AS category,
-         COALESCE(SUM(expense_total), 0)::float AS total,
-         COALESCE(SUM(expense_count), 0)::int AS count
-       FROM cashier_daily_summaries
-       WHERE tenant_id = $1 AND summary_date BETWEEN $2 AND $3
-         AND expense_total > 0`,
-      [req.tenantId, startDate, endDate]
-    );
-
     res.json({
-      expensesByCategory:
-        Number(fallback.rows[0].total || 0) > 0 ? fallback.rows : [],
+      expensesByCategory: result.rows,
       period,
     });
   })
